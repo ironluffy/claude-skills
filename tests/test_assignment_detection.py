@@ -18,24 +18,26 @@ class TestAgentDetection:
     """Test detection of agent-suitable tasks."""
 
     def test_implement_keyword(self):
-        """Should detect 'implement' as agent task."""
+        """Should detect 'implement authentication' as agent task requiring review."""
         assignee_type, needs_review = detect_assignee_type(
             "Implement user authentication",
             "Build authentication system",
             ["backend"]
         )
         assert assignee_type == AssigneeType.AGENT
-        assert not needs_review
+        # Authentication is security-critical, should require review
+        assert needs_review
 
     def test_refactor_keyword(self):
-        """Should detect 'refactor' as agent task."""
+        """Should detect 'refactor payment' as agent task requiring review."""
         assignee_type, needs_review = detect_assignee_type(
             "Refactor payment processing code",
             "Clean up legacy code",
             ["refactoring"]
         )
         assert assignee_type == AssigneeType.AGENT
-        assert not needs_review
+        # Payment processing is financial-critical, should require review
+        assert needs_review
 
     def test_write_test_keyword(self):
         """Should detect 'write test' as agent task."""
@@ -55,6 +57,17 @@ class TestAgentDetection:
             ["api", "backend"]
         )
         assert assignee_type == AssigneeType.AGENT
+        assert not needs_review
+
+    def test_simple_implementation(self):
+        """Should detect simple implementation without review."""
+        assignee_type, needs_review = detect_assignee_type(
+            "Implement user profile page",
+            "Build profile display functionality",
+            ["frontend"]
+        )
+        assert assignee_type == AssigneeType.AGENT
+        # No security/payment keywords, so no review needed
         assert not needs_review
 
 
