@@ -193,7 +193,7 @@ function show_install() {
     echo "1. Clone or download this repository"
     echo ""
     echo "2. Install in Claude Code:"
-    echo "   ${BLUE}/plugin marketplace add yourusername/claude-skills${NC}"
+    echo "   ${BLUE}/plugin marketplace add ironluffy/claude-skills${NC}"
     echo "   ${BLUE}/plugin install universal-claude-skills${NC}"
     echo ""
     echo "3. Or use skills directly:"

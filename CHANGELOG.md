@@ -280,7 +280,7 @@ This release includes 4 production-ready skills focused on development workflows
 
 **Getting Started:**
 ```bash
-/plugin marketplace add yourusername/claude-skills
+/plugin marketplace add ironluffy/claude-skills
 /plugin install universal-claude-skills
 ```
 
@@ -299,6 +299,6 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/claude-skills/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/claude-skills/discussions)
+- **Issues**: [GitHub Issues](https://github.com/ironluffy/claude-skills/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ironluffy/claude-skills/discussions)
 - **Documentation**: [README.md](README.md)

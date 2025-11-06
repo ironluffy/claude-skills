@@ -161,11 +161,11 @@ claude-skills/
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/claude-skills.git
+git clone https://github.com/ironluffy/claude-skills.git
 cd claude-skills
 
 # Or install as Claude Code plugin
-/plugin marketplace add yourusername/claude-skills
+/plugin marketplace add ironluffy/claude-skills
 /plugin install universal-claude-skills
 ```
 

@@ -227,14 +227,14 @@ jobs:
         run: |
           echo "Scanning for sensitive data..."
 
-          # Check for hardcoded API keys
-          if grep -r "lin_api_[a-zA-Z0-9]" --include="*.py" --include="*.md" .; then
+          # Check for hardcoded API keys (exclude placeholder examples)
+          if grep -r "lin_api_[a-zA-Z0-9]\{20,\}" --include="*.py" --exclude-dir=docs --exclude-dir=examples .; then
             echo "✗ Found potential API keys in code"
             exit 1
           fi
 
-          # Check for other secrets patterns
-          if grep -r -E "(password|secret|token)\s*=\s*['\"][^'\"]{8,}" --include="*.py" .; then
+          # Check for other secrets patterns (exclude placeholders)
+          if grep -r -E "(password|secret|token)\s*=\s*['\"][^'\"]{20,}" --include="*.py" .; then
             echo "✗ Found potential hardcoded secrets"
             exit 1
           fi

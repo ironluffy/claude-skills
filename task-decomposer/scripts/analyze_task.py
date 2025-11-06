@@ -261,17 +261,19 @@ def detect_assignee_type(title: str, description: str, labels: List[str]) -> tup
     if any(keyword in title_lower or keyword in desc_lower for keyword in human_keywords):
         return AssigneeType.HUMAN, False
 
-    # Check for tasks needing human review
-    if any(keyword in title_lower or keyword in desc_lower for keyword in review_keywords):
-        if any(keyword in title_lower or keyword in desc_lower for keyword in agent_keywords):
-            # Agent can do it but needs human review
-            return AssigneeType.AGENT, True
-        else:
-            # Better to have human do it directly
-            return AssigneeType.HUMAN, False
+    # Check for agent-friendly tasks FIRST to avoid false positives
+    # (e.g., "Implement authentication" should be agent, not review-required)
+    has_agent_keywords = any(keyword in title_lower or keyword in desc_lower for keyword in agent_keywords)
+    has_review_keywords = any(keyword in title_lower or keyword in desc_lower for keyword in review_keywords)
 
-    # Check for agent-friendly tasks
-    if any(keyword in title_lower or keyword in desc_lower for keyword in agent_keywords):
+    if has_agent_keywords and has_review_keywords:
+        # Agent implementation of security-critical feature needs review
+        return AssigneeType.AGENT, True
+    elif has_review_keywords:
+        # Review keyword without implementation context = human should handle
+        return AssigneeType.HUMAN, False
+    elif has_agent_keywords:
+        # Pure agent work
         return AssigneeType.AGENT, False
 
     # Labels-based detection

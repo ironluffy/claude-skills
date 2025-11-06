@@ -390,7 +390,7 @@ We welcome contributions! Here's how:
 
 ### Reporting Issues
 
-Found a bug or have a suggestion? [Open an issue](https://github.com/yourusername/claude-skills/issues).
+Found a bug or have a suggestion? [Open an issue](https://github.com/ironluffy/claude-skills/issues).
 
 ## Skill Catalog
 
@@ -499,8 +499,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Support
 
 - **Documentation:** See individual skill README files
-- **Issues:** [GitHub Issues](https://github.com/yourusername/claude-skills/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/yourusername/claude-skills/discussions)
+- **Issues:** [GitHub Issues](https://github.com/ironluffy/claude-skills/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/ironluffy/claude-skills/discussions)
 
 ## Roadmap
 
