@@ -1,6 +1,12 @@
 # Universal Claude Skills
 
-A curated collection of universally useful Claude skills for development, project management, and workflow automation. Following the official [Agent Skills v1.0 specification](agent_skills_spec.md).
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/ironluffy/claude-skills/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![CI/CD](https://github.com/ironluffy/claude-skills/actions/workflows/test-skills.yml/badge.svg)](https://github.com/ironluffy/claude-skills/actions)
+[![Skills](https://img.shields.io/badge/skills-5-brightgreen.svg)](#available-skills)
+[![GitHub Stars](https://img.shields.io/github/stars/ironluffy/claude-skills?style=social)](https://github.com/ironluffy/claude-skills/stargazers)
+
+A curated collection of universally useful Claude skills for development, project management, workflow automation, and system design. Following the official [Agent Skills v1.0 specification](agent_skills_spec.md).
 
 ## Overview
 

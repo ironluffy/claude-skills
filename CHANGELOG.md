@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### System Design Reviewer Skill 🏗️📊
+
+**NEW SKILL:** Comprehensive system design review and analysis tool with multi-format diagram generation.
+
+- **Multi-Format Diagram Generation**
+  - Mermaid diagrams (GitHub/GitLab-renderable)
+  - ASCII diagrams (universal terminal compatibility)
+  - Architecture diagrams (components, services, databases)
+  - Sequence diagrams (API flows, authentication)
+  - Database/ER diagrams (schema relationships)
+  - Flowcharts (business logic, decision trees)
+
+- **Python Analysis Scripts** (6 total)
+  - `review_design.py` - Main orchestrator for complete reviews
+  - `generate_diagrams.py` - Multi-format diagram generator
+  - `analyze_architecture.py` - Architecture best practices checker
+  - `security_analyzer.py` - OWASP Top 10 & vulnerability detector
+  - `performance_analyzer.py` - Performance bottleneck finder
+  - `cost_optimizer.py` - Cloud cost optimization analyzer
+
+- **Comprehensive Analysis Framework**
+  - **Architecture Review**: Scalability, reliability, maintainability
+  - **Security Assessment**: OWASP compliance, auth/encryption gaps
+  - **Performance Optimization**: Caching, N+1 queries, load balancing
+  - **Cost Efficiency**: Right-sizing, serverless, 30-50% savings potential
+
+- **Reference Documentation**
+  - `architecture-best-practices.md` - Scalability and reliability patterns
+  - `security-checklist.md` - OWASP Top 10 and security headers
+  - `performance-patterns.md` - Caching, indexing, optimization
+  - `cost-optimization.md` - Cloud cost reduction strategies
+
+- **Templates & Examples**
+  - Review report template with structured format
+  - Example demonstrations and usage patterns
+  - Before/after review scenarios
+
 #### Intelligent Agent/Human Assignment System 🤖👤
 
 **Major Feature:** Automatic detection and assignment of tasks to AI agents or humans based on task characteristics.
@@ -74,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - High-risk or security-critical
 
 ### Changed
+
+- **Plugin Manifest** - Updated to v1.1.0
+  - Added system-design-reviewer to skills list
+  - Added Architecture category
+  - New keywords: system-design, architecture-review, security-analysis, performance-optimization, cost-optimization
+  - Comprehensive installation guide created
 
 - **task-decomposer** - Updated to v1.1.0
   - `SubTask` dataclass now includes `assignee_type`, `assignee`, `requires_human_review`
