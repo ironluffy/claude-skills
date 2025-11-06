@@ -197,7 +197,60 @@ python scripts/issue_operations.py bulk-update \
 
 ---
 
-### 4. template-skill
+### 4. system-design-reviewer
+
+**Review system designs and generate comprehensive text diagrams with architecture, security, performance, and cost analysis**
+
+Analyze existing systems and generate detailed review reports with multi-format diagrams (Mermaid + ASCII), identifying issues and optimization opportunities across all dimensions.
+
+**Features:**
+- **Multi-format diagrams** - Mermaid (GitHub-renderable) + ASCII (universal)
+- **Architecture review** - Scalability, reliability, maintainability analysis
+- **Security assessment** - OWASP Top 10, auth/encryption gaps, vulnerability detection
+- **Performance optimization** - Caching strategies, N+1 queries, load balancing
+- **Cost efficiency** - Right-sizing, serverless opportunities, cloud cost reduction
+
+**Usage:**
+```bash
+# Complete system design review
+python scripts/review_design.py /path/to/project --output design-review.md
+
+# Security-focused analysis
+python scripts/security_analyzer.py /path/to/project --output security-report.md
+
+# Performance analysis
+python scripts/performance_analyzer.py /path/to/project --output perf-report.md
+
+# Cost optimization
+python scripts/cost_optimizer.py /path/to/project --output cost-report.md
+
+# Generate diagrams only
+python scripts/generate_diagrams.py /path/to/project --output diagrams/ --formats mermaid,ascii
+```
+
+Output includes:
+- 📊 Architecture diagrams (components, services, databases)
+- 🔄 Sequence diagrams (API flows, authentication)
+- 🗂️ Database/ER diagrams (schema relationships)
+- 📈 Flowcharts (business logic, decision trees)
+- 🏗️ Architecture findings (scalability, reliability issues)
+- 🔒 Security findings (OWASP compliance, vulnerabilities)
+- ⚡ Performance opportunities (caching, query optimization)
+- 💰 Cost optimization (30-50% savings potential)
+
+**When to use:**
+- Reviewing system architecture
+- Planning major refactors
+- Security audits
+- Performance optimization
+- Cost reduction initiatives
+- Technical documentation
+
+[Full Documentation](system-design-reviewer/SKILL.md) | [Scripts](system-design-reviewer/scripts/) | [References](system-design-reviewer/references/)
+
+---
+
+### 5. template-skill
 
 **Minimal starter template for creating new skills**
 
