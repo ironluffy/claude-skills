@@ -92,7 +92,7 @@ jobs:
         run: |
           cd skill-creator/scripts
           python init_skill.py test-skill "Test skill description" || exit 1
-          test -d ../test-skill || exit 1
+          test -d ../../test-skill || exit 1
           echo "✓ init_skill.py works"
 
   validate-yaml:
