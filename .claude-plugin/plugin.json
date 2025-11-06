@@ -1,8 +1,8 @@
 {
   "name": "universal-claude-skills",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Universal Claude Skills",
-  "description": "Collection of universally useful Claude skills for development, project management, and workflow automation",
+  "description": "Collection of universally useful Claude skills for development, project management, workflow automation, and system design",
   "author": "Your Name",
   "license": "Apache-2.0",
   "repository": "https://github.com/ironluffy/claude-skills",
@@ -18,13 +18,19 @@
     "task-decomposition",
     "issue-management",
     "workflow-automation",
-    "productivity"
+    "productivity",
+    "system-design",
+    "architecture-review",
+    "security-analysis",
+    "performance-optimization",
+    "cost-optimization"
   ],
   "categories": [
     "Development",
     "Project Management",
     "Productivity",
-    "Automation"
+    "Automation",
+    "Architecture"
   ],
   "skills": [
     {
@@ -66,6 +72,19 @@
         "Issue splitting strategies",
         "Bulk operations with dry-run",
         "Multi-platform support"
+      ]
+    },
+    {
+      "name": "system-design-reviewer",
+      "path": "system-design-reviewer",
+      "description": "Review system designs and generate comprehensive text diagrams with architecture, security, performance, and cost analysis",
+      "category": "Architecture",
+      "features": [
+        "Multi-format diagrams (Mermaid + ASCII)",
+        "Architecture review (scalability, reliability)",
+        "Security assessment (OWASP Top 10)",
+        "Performance optimization analysis",
+        "Cost optimization (30-50% savings)"
       ]
     }
   ],
