@@ -1,0 +1,43 @@
+{
+  "name": "universal-claude-skills",
+  "version": "1.0.0",
+  "description": "Collection of universally useful Claude skills for development, project management, and workflow automation",
+  "author": "Your Name",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/yourusername/claude-skills",
+  "keywords": [
+    "skills",
+    "development",
+    "project-management",
+    "linear",
+    "github",
+    "task-decomposition",
+    "issue-management"
+  ],
+  "skills": [
+    {
+      "name": "template-skill",
+      "path": "template-skill",
+      "description": "Minimal starter template for creating new skills"
+    },
+    {
+      "name": "skill-creator",
+      "path": "skill-creator",
+      "description": "Meta-skill for developing and packaging new Claude skills"
+    },
+    {
+      "name": "task-decomposer",
+      "path": "task-decomposer",
+      "description": "Decompose Linear todos into actionable, testifiable chunks with rationale, as-is/to-be analysis, expected outputs, and risk assessment"
+    },
+    {
+      "name": "issue-manager",
+      "path": "issue-manager",
+      "description": "Manage GitHub/Linear issues - report blocks, modify metadata, split complex issues, and create related issues with proper linking"
+    }
+  ],
+  "engines": {
+    "claudeCode": ">=1.0.0"
+  },
+  "spec_version": "1.0"
+}
