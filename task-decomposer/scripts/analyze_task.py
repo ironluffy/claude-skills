@@ -425,7 +425,7 @@ def analyze_task(task: str, project: str = None, complexity: str = "medium") -> 
     return decomposition
 
 
-def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None, agent_user_id: str = "agent", human_user_ids: Dict[str, str] = None):
+def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None, agent_user_id: str = "agent", human_user_ids: Dict[str, str] = None, dry_run: bool = True):
     """
     Export decomposition to Linear with intelligent assignment.
 
@@ -435,6 +435,7 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
         parent_id: Optional parent issue ID
         agent_user_id: User ID to use for agent-assigned tasks (default: "agent")
         human_user_ids: Dict mapping role to Linear user ID for human assignments
+        dry_run: If True, show what would be created without actually creating (default: True)
     """
     print(f"\n📤 Exporting to Linear team: {team_id}")
     if parent_id:
@@ -453,40 +454,139 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
     print(f"  👤 Human-assigned tasks: {len(human_tasks)}")
     print(f"  🔄 Either agent or human: {len(either_tasks)}")
 
-    print("\nWould create Linear issues with assignments:")
-    for st in decomposition.subtasks:
-        # Determine assignee
-        if st.assignee:
-            assignee = st.assignee
-        elif st.assignee_type == AssigneeType.AGENT:
-            assignee = agent_user_id
-        elif st.assignee_type == AssigneeType.HUMAN:
-            # Try to match by labels
-            assignee = None
-            for label in st.labels:
-                if label in human_user_ids:
-                    assignee = human_user_ids[label]
-                    break
-            if not assignee:
-                assignee = human_user_ids.get("default", "unassigned")
-        else:  # EITHER
-            assignee = agent_user_id  # Default to agent for flexibility
+    # Try to use real Linear API if available
+    use_real_api = not dry_run and os.getenv("LINEAR_API_KEY")
 
-        icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
-        review_mark = " ⚠️ [NEEDS REVIEW]" if st.requires_human_review else ""
-        print(f"  {icon} #{st.id}: {st.title}")
-        print(f"      Assignee: {assignee}{review_mark}")
-        print(f"      Estimate: {st.estimate_hours}h | Priority: {st.priority.name}")
-        if st.dependencies:
-            print(f"      Depends on: #{', #'.join(map(str, st.dependencies))}")
+    if use_real_api:
+        try:
+            # Import Linear integration
+            from linear_integration import LinearClient, LinearIssue
 
-    print("\n💡 Assignment Rules Applied:")
-    print("  • Agent tasks: Fully automated work (code, tests, refactoring)")
-    print("  • Human tasks: Decisions, approvals, stakeholder work")
-    print("  • Review required: Security, payments, critical systems")
-    print("\n⚠️  Linear API integration requires authentication.")
-    print("   Configure with: export LINEAR_API_KEY=your_key_here")
-    print("   Or use Linear MCP: claude mcp add linear npx @linear/mcp")
+            client = LinearClient()
+            print("\n✓ Connected to Linear API")
+
+            # Create issues
+            print("\n📝 Creating Linear issues with assignments:")
+            created_issues = []
+
+            for st in decomposition.subtasks:
+                # Determine assignee
+                assignee_id = None
+                if st.assignee:
+                    assignee_id = st.assignee
+                elif st.assignee_type == AssigneeType.AGENT:
+                    assignee_id = agent_user_id
+                elif st.assignee_type == AssigneeType.HUMAN:
+                    # Try to match by labels
+                    for label in st.labels:
+                        if label in human_user_ids:
+                            assignee_id = human_user_ids[label]
+                            break
+                    if not assignee_id:
+                        assignee_id = human_user_ids.get("default")
+                else:  # EITHER
+                    assignee_id = agent_user_id
+
+                # Build description
+                description = f"""# {st.title}
+
+{st.description}
+
+## Acceptance Criteria
+{chr(10).join(f'- [ ] {c}' for c in st.acceptance_criteria)}
+
+## Testing
+{chr(10).join(f'- [ ] {t}' for t in st.testing_criteria)}
+
+## Expected Outputs
+{chr(10).join(f'- {o}' for o in st.expected_outputs)}
+
+## Assignment
+- **Type:** {st.assignee_type.value}
+- **Requires Review:** {'Yes' if st.requires_human_review else 'No'}
+
+## Dependencies
+{', '.join(f'#{d}' for d in st.dependencies) if st.dependencies else 'None'}
+"""
+
+                # Map priority to Linear (0=None, 1=Urgent, 2=High, 3=Medium, 4=Low)
+                linear_priority = {
+                    Priority.P0: 1,  # Urgent
+                    Priority.P1: 2,  # High
+                    Priority.P2: 4   # Low
+                }.get(st.priority, 0)
+
+                # Create issue
+                issue = client.create_issue(
+                    team_id=team_id,
+                    title=st.title,
+                    description=description,
+                    assignee_id=assignee_id,
+                    priority=linear_priority,
+                    estimate=int(st.estimate_hours) if st.estimate_hours else None,
+                    parent_id=parent_id
+                )
+
+                created_issues.append(issue)
+
+                icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
+                review_mark = " ⚠️" if st.requires_human_review else ""
+                print(f"  {icon} {issue['identifier']}: {st.title}{review_mark}")
+                print(f"      URL: {issue['url']}")
+
+            print(f"\n✓ Created {len(created_issues)} Linear issues")
+
+        except ImportError:
+            print("\n⚠️  Linear integration module not found. Install with:")
+            print("   pip install requests")
+            use_real_api = False
+        except Exception as e:
+            print(f"\n⚠️  Failed to create Linear issues: {e}")
+            print("   Falling back to preview mode...")
+            use_real_api = False
+
+    if not use_real_api:
+        # Preview mode
+        print("\n[DRY RUN] Would create Linear issues with assignments:")
+        for st in decomposition.subtasks:
+            # Determine assignee
+            if st.assignee:
+                assignee = st.assignee
+            elif st.assignee_type == AssigneeType.AGENT:
+                assignee = agent_user_id
+            elif st.assignee_type == AssigneeType.HUMAN:
+                # Try to match by labels
+                assignee = None
+                for label in st.labels:
+                    if label in human_user_ids:
+                        assignee = human_user_ids[label]
+                        break
+                if not assignee:
+                    assignee = human_user_ids.get("default", "unassigned")
+            else:  # EITHER
+                assignee = agent_user_id  # Default to agent for flexibility
+
+            icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
+            review_mark = " ⚠️ [NEEDS REVIEW]" if st.requires_human_review else ""
+            print(f"  {icon} #{st.id}: {st.title}")
+            print(f"      Assignee: {assignee}{review_mark}")
+            print(f"      Estimate: {st.estimate_hours}h | Priority: {st.priority.name}")
+            if st.dependencies:
+                print(f"      Depends on: #{', #'.join(map(str, st.dependencies))}")
+
+        print("\n💡 Assignment Rules Applied:")
+        print("  • Agent tasks: Fully automated work (code, tests, refactoring)")
+        print("  • Human tasks: Decisions, approvals, stakeholder work")
+        print("  • Review required: Security, payments, critical systems")
+
+        if dry_run:
+            print("\n⚠️  This was a DRY RUN. To create real issues:")
+            print("   1. Set LINEAR_API_KEY environment variable")
+            print("   2. Run without --dry-run flag (or use --create-linear)")
+        else:
+            print("\n⚠️  Linear API key not found. Set with:")
+            print("   export LINEAR_API_KEY=your_key_here")
+            print("   Or use Linear MCP: claude mcp add linear npx @linear/mcp")
 
 
 def export_to_github(decomposition: Decomposition, repo: str):
@@ -536,6 +636,8 @@ def main():
     parser.add_argument("--parent-id", help="Linear parent issue ID")
     parser.add_argument("--agent-user", default="agent", help="Linear user ID for agent-assigned tasks (default: 'agent')")
     parser.add_argument("--human-users", help="Comma-separated role:user_id pairs (e.g., 'backend:user123,frontend:user456,default:user789')")
+    parser.add_argument("--dry-run", action="store_true", default=True, help="Preview without creating (default: True)")
+    parser.add_argument("--create-linear", action="store_true", help="Actually create Linear issues (requires LINEAR_API_KEY)")
     parser.add_argument("--export-github", action="store_true")
     parser.add_argument("--repo", help="GitHub repository (owner/repo)")
     parser.add_argument("--graph", help="Generate dependency graph to file")
@@ -583,7 +685,10 @@ def main():
                     role, user_id = pair.split(':', 1)
                     human_users[role.strip()] = user_id.strip()
 
-        export_to_linear(decomposition, args.team_id, args.parent_id, args.agent_user, human_users)
+        # Determine if we should actually create issues
+        dry_run = not args.create_linear
+
+        export_to_linear(decomposition, args.team_id, args.parent_id, args.agent_user, human_users, dry_run)
 
     # Export to GitHub
     if args.export_github:
