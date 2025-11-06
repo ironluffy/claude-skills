@@ -1,43 +1,81 @@
 {
   "name": "universal-claude-skills",
   "version": "1.0.0",
+  "displayName": "Universal Claude Skills",
   "description": "Collection of universally useful Claude skills for development, project management, and workflow automation",
   "author": "Your Name",
   "license": "Apache-2.0",
   "repository": "https://github.com/yourusername/claude-skills",
+  "homepage": "https://github.com/yourusername/claude-skills#readme",
+  "bugs": "https://github.com/yourusername/claude-skills/issues",
   "keywords": [
     "skills",
     "development",
     "project-management",
     "linear",
     "github",
+    "jira",
     "task-decomposition",
-    "issue-management"
+    "issue-management",
+    "workflow-automation",
+    "productivity"
+  ],
+  "categories": [
+    "Development",
+    "Project Management",
+    "Productivity",
+    "Automation"
   ],
   "skills": [
     {
       "name": "template-skill",
       "path": "template-skill",
-      "description": "Minimal starter template for creating new skills"
+      "description": "Minimal starter template for creating new skills",
+      "category": "Reference"
     },
     {
       "name": "skill-creator",
       "path": "skill-creator",
-      "description": "Meta-skill for developing and packaging new Claude skills"
+      "description": "Meta-skill for developing and packaging new Claude skills",
+      "category": "Development",
+      "features": [
+        "Generate skill boilerplate",
+        "Validate against v1.0 spec",
+        "Best practices documentation"
+      ]
     },
     {
       "name": "task-decomposer",
       "path": "task-decomposer",
-      "description": "Decompose Linear todos into actionable, testifiable chunks with rationale, as-is/to-be analysis, expected outputs, and risk assessment"
+      "description": "Decompose Linear todos into actionable, testifiable chunks with rationale, as-is/to-be analysis, expected outputs, and risk assessment",
+      "category": "Project Management",
+      "features": [
+        "Task decomposition with rationale",
+        "As-is/to-be state analysis",
+        "Risk assessment matrix",
+        "Linear/GitHub export"
+      ]
     },
     {
       "name": "issue-manager",
       "path": "issue-manager",
-      "description": "Manage GitHub/Linear issues - report blocks, modify metadata, split complex issues, and create related issues with proper linking"
+      "description": "Manage GitHub/Linear issues - report blocks, modify metadata, split complex issues, and create related issues with proper linking",
+      "category": "Project Management",
+      "features": [
+        "Block reporting and tracking",
+        "Issue splitting strategies",
+        "Bulk operations with dry-run",
+        "Multi-platform support"
+      ]
     }
   ],
   "engines": {
     "claudeCode": ">=1.0.0"
   },
-  "spec_version": "1.0"
+  "dependencies": {
+    "python": ">=3.8"
+  },
+  "spec_version": "1.0",
+  "icon": "🛠️",
+  "readme": "README.md"
 }
