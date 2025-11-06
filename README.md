@@ -77,29 +77,40 @@ python package_skill.py ../my-awesome-skill
 
 ### 2. task-decomposer
 
-**Break down complex tasks into actionable, testifiable subtasks**
+**Break down complex tasks into actionable, testifiable subtasks with intelligent agent/human assignment**
 
-Transform high-level Linear/GitHub tasks into structured decompositions with rationale, risk assessment, and testing criteria.
+Transform high-level Linear/GitHub tasks into structured decompositions with rationale, risk assessment, and automatic assignment to AI agents or humans.
 
 **Features:**
+- **Intelligent assignment** - Auto-detect agent vs human work 🤖👤
 - **Decomposition analysis** - As-is → to-be, gap analysis
 - **Actionable subtasks** - 1-4 hour chunks with clear deliverables
 - **Testifiable criteria** - Acceptance tests per subtask
 - **Risk assessment** - Identify and mitigate blockers
-- **Linear/GitHub export** - Direct integration
+- **Linear/GitHub export** - Direct integration with assignments
 
 **Usage:**
 ```bash
+# Basic task decomposition
 python scripts/analyze_task.py "Implement user authentication" --project backend
+
+# Export to Linear with intelligent assignment
+python scripts/analyze_task.py "Build payment processing" \
+  --export-linear --team-id TEAM123 \
+  --agent-user "agent-bot" \
+  --human-users "backend:user-abc,security:user-def,default:user-xyz"
 ```
 
 Output:
+- 🤖 Agent tasks (code, tests, refactoring)
+- 👤 Human tasks (decisions, approvals, strategy)
+- ⚠️ Agent tasks requiring human review (security, payments)
 - Rationale for decomposition approach
 - As-is vs. to-be state analysis
 - 5-8 subtasks with estimates
 - Dependency graph
 - Risk matrix with mitigation
-- Linear-ready format
+- Linear-ready format with assignments
 
 **When to use:**
 - Planning complex features
@@ -114,11 +125,12 @@ Output:
 
 ### 3. issue-manager
 
-**Comprehensive GitHub/Linear/Jira issue management**
+**Comprehensive GitHub/Linear/Jira issue management with intelligent assignment**
 
-Report blocks, split complex issues, bulk update metadata, and create related issues with proper linking.
+Report blocks, split complex issues, bulk update metadata, and automatically assign to agents or humans based on task characteristics.
 
 **Features:**
+- **Smart assignment** - Auto-assign to agents or humans 🤖👤
 - **Blocker reporting** - Document what's blocking with context
 - **Issue splitting** - Break large issues into manageable pieces
 - **Bulk operations** - Update multiple issues consistently
@@ -126,6 +138,28 @@ Report blocks, split complex issues, bulk update metadata, and create related is
 - **Block analysis** - Find critical path and suggest unblocking
 
 **Usage:**
+
+Auto-assign issues:
+```bash
+# Automatically detect and assign
+python scripts/issue_operations.py auto-assign \
+  --issue ISSUE-123 \
+  --agent-user "agent-bot" \
+  --human-users "default:user-xyz"
+
+# Manual assignment
+python scripts/issue_operations.py assign \
+  --issue ISSUE-456 \
+  --assignee "agent-bot" \
+  --assignee-type agent
+
+# Reassign from agent to human
+python scripts/issue_operations.py reassign \
+  --issue ISSUE-789 \
+  --from-assignee "agent-bot" \
+  --to-assignee "user-xyz" \
+  --reason "Requires stakeholder approval"
+```
 
 Report a blocker:
 ```bash

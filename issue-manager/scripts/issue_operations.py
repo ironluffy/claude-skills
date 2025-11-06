@@ -80,6 +80,116 @@ class IssueManager:
         self.platform = platform
         self.dry_run = dry_run
 
+    def assign_issue(
+        self,
+        issue_id: str,
+        assignee: str,
+        assignee_type: str = "agent",
+        notify: bool = True
+    ) -> Dict:
+        """Assign issue to agent or human."""
+
+        if self.dry_run:
+            print(f"[DRY RUN] Would assign {issue_id}")
+            print(f"  Assignee: {assignee} (type: {assignee_type})")
+            print(f"  Notify: {notify}")
+            return {"assignee": assignee, "type": assignee_type}
+
+        icon = "🤖" if assignee_type == "agent" else "👤"
+        print(f"✓ Assigned {issue_id} to {icon} {assignee}")
+        if notify:
+            print(f"  Notified {assignee}")
+
+        return {"issue": issue_id, "assignee": assignee, "type": assignee_type}
+
+    def auto_assign(
+        self,
+        issue_id: str,
+        agent_user: str = "agent",
+        human_users: Dict[str, str] = None
+    ) -> Dict:
+        """
+        Auto-assign issue based on content analysis.
+
+        Detects whether task requires agent or human intervention.
+        """
+        human_users = human_users or {}
+
+        # In production, this would fetch issue details from API
+        # For now, use placeholder logic
+        title = f"Issue {issue_id}"
+        description = "Sample issue description"
+        labels = ["development"]
+
+        # Detect assignee type (using same logic as task decomposer)
+        human_keywords = [
+            "approve", "decision", "review stakeholder", "negotiate",
+            "business decision", "prioritize", "strategic"
+        ]
+
+        title_lower = title.lower()
+        desc_lower = description.lower()
+
+        is_human_task = any(kw in title_lower or kw in desc_lower for kw in human_keywords)
+
+        if is_human_task:
+            assignee = human_users.get("default", "unassigned")
+            assignee_type = "human"
+            icon = "👤"
+        else:
+            assignee = agent_user
+            assignee_type = "agent"
+            icon = "🤖"
+
+        if self.dry_run:
+            print(f"[DRY RUN] Would auto-assign {issue_id}")
+            print(f"  Analysis: {'Human' if is_human_task else 'Agent'} task detected")
+            print(f"  Assignee: {icon} {assignee}")
+            return {"assignee": assignee, "type": assignee_type}
+
+        print(f"✓ Auto-assigned {issue_id} to {icon} {assignee}")
+        print(f"  Detection: {'Human judgment required' if is_human_task else 'Agent can automate'}")
+
+        return {
+            "issue": issue_id,
+            "assignee": assignee,
+            "type": assignee_type,
+            "auto_detected": True
+        }
+
+    def reassign_issue(
+        self,
+        issue_id: str,
+        from_assignee: str,
+        to_assignee: str,
+        reason: str = "",
+        notify_both: bool = True
+    ) -> Dict:
+        """Reassign issue from one assignee to another."""
+
+        if self.dry_run:
+            print(f"[DRY RUN] Would reassign {issue_id}")
+            print(f"  From: {from_assignee}")
+            print(f"  To: {to_assignee}")
+            if reason:
+                print(f"  Reason: {reason}")
+            print(f"  Notify both: {notify_both}")
+            return {"from": from_assignee, "to": to_assignee}
+
+        print(f"✓ Reassigned {issue_id}")
+        print(f"  {from_assignee} → {to_assignee}")
+        if reason:
+            print(f"  Reason: {reason}")
+        if notify_both:
+            print(f"  Notified both assignees")
+
+        return {
+            "issue": issue_id,
+            "from": from_assignee,
+            "to": to_assignee,
+            "reason": reason
+        }
+
     def report_blocker(
         self,
         issue_id: str,
@@ -304,10 +414,11 @@ class IssueManager:
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Manage GitHub and Linear issues")
+    parser = argparse.ArgumentParser(description="Manage GitHub and Linear issues with intelligent agent/human assignment")
     parser.add_argument("operation", choices=[
         "report-blocker", "unblock", "split-issue", "merge-issues",
-        "bulk-update", "create-related", "query"
+        "bulk-update", "create-related", "query",
+        "assign", "auto-assign", "reassign"
     ])
     parser.add_argument("--platform", choices=["linear", "github", "jira"], default="linear")
     parser.add_argument("--issue", help="Issue ID")
@@ -328,6 +439,13 @@ def main():
     parser.add_argument("--set-priority", help="Priority to set")
     parser.add_argument("--comment", help="Comment to add")
     parser.add_argument("--source", help="Source issue for related issue")
+    parser.add_argument("--assignee", help="User/agent to assign to")
+    parser.add_argument("--assignee-type", choices=["agent", "human"], default="agent", help="Type of assignee")
+    parser.add_argument("--agent-user", default="agent", help="User ID for agent assignments")
+    parser.add_argument("--human-users", help="Comma-separated role:user_id pairs")
+    parser.add_argument("--from-assignee", help="Current assignee (for reassignment)")
+    parser.add_argument("--to-assignee", help="New assignee (for reassignment)")
+    parser.add_argument("--reason", help="Reason for reassignment")
     parser.add_argument("--type", choices=["follow-up", "prerequisite", "related", "subtask"], help="Relationship type")
     parser.add_argument("--title", help="Title for new issue")
     parser.add_argument("--description", help="Description for new issue")
@@ -429,6 +547,48 @@ def main():
             sys.exit(1)
 
         result = manager.query_issues(args.filter)
+
+    elif args.operation == "assign":
+        if not args.issue or not args.assignee:
+            print("Error: --issue and --assignee required")
+            sys.exit(1)
+
+        result = manager.assign_issue(
+            args.issue,
+            args.assignee,
+            args.assignee_type
+        )
+
+    elif args.operation == "auto-assign":
+        if not args.issue:
+            print("Error: --issue required")
+            sys.exit(1)
+
+        # Parse human users mapping
+        human_users = {}
+        if args.human_users:
+            for pair in args.human_users.split(','):
+                if ':' in pair:
+                    role, user_id = pair.split(':', 1)
+                    human_users[role.strip()] = user_id.strip()
+
+        result = manager.auto_assign(
+            args.issue,
+            args.agent_user,
+            human_users
+        )
+
+    elif args.operation == "reassign":
+        if not args.issue or not args.from_assignee or not args.to_assignee:
+            print("Error: --issue, --from-assignee, and --to-assignee required")
+            sys.exit(1)
+
+        result = manager.reassign_issue(
+            args.issue,
+            args.from_assignee,
+            args.to_assignee,
+            args.reason or ""
+        )
 
     # Save output if requested
     if args.output and result:

@@ -47,6 +47,12 @@ class RiskLevel(Enum):
     HIGH = "High"
 
 
+class AssigneeType(Enum):
+    AGENT = "agent"  # Can be fully automated by AI agent
+    HUMAN = "human"  # Requires human decision/intervention
+    EITHER = "either"  # Can be done by agent or human
+
+
 @dataclass
 class SubTask:
     """Represents a decomposed subtask."""
@@ -61,14 +67,24 @@ class SubTask:
     testing_criteria: List[str]
     expected_outputs: List[str]
     risks: List[Dict[str, str]]
+    assignee_type: AssigneeType = AssigneeType.AGENT
+    assignee: Optional[str] = None
+    requires_human_review: bool = False
 
     def to_markdown(self) -> str:
         """Convert subtask to markdown format."""
         deps = f"#{', #'.join(map(str, self.dependencies))}" if self.dependencies else "None"
 
+        # Assignment info
+        assignment_icon = "🤖" if self.assignee_type == AssigneeType.AGENT else "👤" if self.assignee_type == AssigneeType.HUMAN else "🔄"
+        assignment_str = f"{assignment_icon} **Assignee:** {self.assignee or self.assignee_type.value}"
+        if self.requires_human_review:
+            assignment_str += " ⚠️ (Requires human review)"
+
         md = f"""### {self.id}. {self.title}
 **Priority:** {self.priority.name} ({self.priority.value})
 **Estimate:** {self.estimate_hours} hours
+{assignment_str}
 **Labels:** {', '.join(self.labels)}
 **Dependencies:** {deps}
 
@@ -212,6 +228,63 @@ class Decomposition:
         return '\n'.join(lines)
 
 
+def detect_assignee_type(title: str, description: str, labels: List[str]) -> tuple[AssigneeType, bool]:
+    """
+    Detect whether task should be assigned to agent or human.
+
+    Returns (assignee_type, requires_human_review)
+    """
+    title_lower = title.lower()
+    desc_lower = description.lower()
+
+    # Keywords requiring human intervention
+    human_keywords = [
+        "approve", "decision", "review stakeholder", "negotiate", "business decision",
+        "prioritize", "strategic", "legal", "compliance", "privacy policy",
+        "user research", "interview", "stakeholder", "sign off", "final approval"
+    ]
+
+    # Keywords requiring human review (but agent can do initial work)
+    review_keywords = [
+        "security", "audit", "penetration test", "vulnerability", "authentication",
+        "payment", "financial", "billing", "critical", "production deploy", "migration"
+    ]
+
+    # Keywords indicating agent-friendly tasks
+    agent_keywords = [
+        "implement", "write test", "create unit test", "refactor", "update",
+        "build", "develop", "code", "script", "automate", "generate",
+        "format", "lint", "type check", "documentation code"
+    ]
+
+    # Check for human-required tasks
+    if any(keyword in title_lower or keyword in desc_lower for keyword in human_keywords):
+        return AssigneeType.HUMAN, False
+
+    # Check for tasks needing human review
+    if any(keyword in title_lower or keyword in desc_lower for keyword in review_keywords):
+        if any(keyword in title_lower or keyword in desc_lower for keyword in agent_keywords):
+            # Agent can do it but needs human review
+            return AssigneeType.AGENT, True
+        else:
+            # Better to have human do it directly
+            return AssigneeType.HUMAN, False
+
+    # Check for agent-friendly tasks
+    if any(keyword in title_lower or keyword in desc_lower for keyword in agent_keywords):
+        return AssigneeType.AGENT, False
+
+    # Labels-based detection
+    if "security" in labels or "audit" in labels or "review" in labels:
+        return AssigneeType.AGENT, True
+
+    if "planning" in labels or "research" in labels or "design" in labels:
+        return AssigneeType.EITHER, False
+
+    # Default: agent can do it
+    return AssigneeType.AGENT, False
+
+
 def analyze_task(task: str, project: str = None, complexity: str = "medium") -> Decomposition:
     """
     Analyze task and generate decomposition.
@@ -221,88 +294,113 @@ def analyze_task(task: str, project: str = None, complexity: str = "medium") -> 
     """
 
     # Example decomposition (would be AI-generated in production)
-    subtasks = [
-        SubTask(
-            id=1,
-            title="Analyze requirements and design approach",
-            description="Review requirements, research best practices, and design solution architecture.",
-            priority=Priority.P0,
-            estimate_hours=2.0,
-            labels=["planning", "research"],
-            dependencies=[],
-            acceptance_criteria=[
+    # Create subtasks and auto-detect assignee types
+    subtask_data = [
+        {
+            "id": 1,
+            "title": "Analyze requirements and design approach",
+            "description": "Review requirements, research best practices, and design solution architecture.",
+            "priority": Priority.P0,
+            "estimate_hours": 2.0,
+            "labels": ["planning", "research"],
+            "dependencies": [],
+            "acceptance_criteria": [
                 "Requirements documented",
                 "Technical approach defined",
                 "Architecture diagram created"
             ],
-            testing_criteria=[
+            "testing_criteria": [
                 "Review with stakeholders",
                 "Validate approach with team"
             ],
-            expected_outputs=[
+            "expected_outputs": [
                 "Requirements document",
                 "Architecture diagram",
                 "Technical design doc"
             ],
-            risks=[]
-        ),
-        SubTask(
-            id=2,
-            title="Implement core functionality",
-            description=f"Build the main components for: {task}",
-            priority=Priority.P0,
-            estimate_hours=4.0,
-            labels=[project] if project else ["development"],
-            dependencies=[1],
-            acceptance_criteria=[
+            "risks": []
+        },
+        {
+            "id": 2,
+            "title": "Implement core functionality",
+            "description": f"Build the main components for: {task}",
+            "priority": Priority.P0,
+            "estimate_hours": 4.0,
+            "labels": [project] if project else ["development"],
+            "dependencies": [1],
+            "acceptance_criteria": [
                 "Core logic implemented",
                 "Unit tests written (>80% coverage)",
                 "Code reviewed"
             ],
-            testing_criteria=[
+            "testing_criteria": [
                 "Run unit tests",
                 "Test edge cases",
                 "Verify error handling"
             ],
-            expected_outputs=[
+            "expected_outputs": [
                 "Source code",
                 "Unit tests",
                 "API documentation"
             ],
-            risks=[
+            "risks": [
                 {
                     "level": "MEDIUM",
                     "description": "Complexity underestimated",
                     "mitigation": "Buffer time allocated, incremental approach"
                 }
             ]
-        ),
-        SubTask(
-            id=3,
-            title="Integration testing and validation",
-            description="Test integration with existing systems and validate functionality.",
-            priority=Priority.P1,
-            estimate_hours=2.0,
-            labels=["testing", "integration"],
-            dependencies=[2],
-            acceptance_criteria=[
+        },
+        {
+            "id": 3,
+            "title": "Integration testing and validation",
+            "description": "Test integration with existing systems and validate functionality.",
+            "priority": Priority.P1,
+            "estimate_hours": 2.0,
+            "labels": ["testing", "integration"],
+            "dependencies": [2],
+            "acceptance_criteria": [
                 "Integration tests pass",
                 "End-to-end scenarios validated",
                 "Performance benchmarks met"
             ],
-            testing_criteria=[
+            "testing_criteria": [
                 "Run integration test suite",
                 "Test in staging environment",
                 "Performance testing"
             ],
-            expected_outputs=[
+            "expected_outputs": [
                 "Integration test results",
                 "Test coverage report",
                 "Performance metrics"
             ],
-            risks=[]
-        )
+            "risks": []
+        }
     ]
+
+    # Build SubTask objects with auto-detected assignment
+    subtasks = []
+    for data in subtask_data:
+        assignee_type, requires_review = detect_assignee_type(
+            data["title"],
+            data["description"],
+            data["labels"]
+        )
+        subtasks.append(SubTask(
+            id=data["id"],
+            title=data["title"],
+            description=data["description"],
+            priority=data["priority"],
+            estimate_hours=data["estimate_hours"],
+            labels=data["labels"],
+            dependencies=data["dependencies"],
+            acceptance_criteria=data["acceptance_criteria"],
+            testing_criteria=data["testing_criteria"],
+            expected_outputs=data["expected_outputs"],
+            risks=data["risks"],
+            assignee_type=assignee_type,
+            requires_human_review=requires_review
+        ))
 
     decomposition = Decomposition(
         original_task=task,
@@ -327,18 +425,68 @@ def analyze_task(task: str, project: str = None, complexity: str = "medium") -> 
     return decomposition
 
 
-def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None):
-    """Export decomposition to Linear (placeholder)."""
+def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None, agent_user_id: str = "agent", human_user_ids: Dict[str, str] = None):
+    """
+    Export decomposition to Linear with intelligent assignment.
+
+    Args:
+        decomposition: Task decomposition
+        team_id: Linear team ID
+        parent_id: Optional parent issue ID
+        agent_user_id: User ID to use for agent-assigned tasks (default: "agent")
+        human_user_ids: Dict mapping role to Linear user ID for human assignments
+    """
     print(f"\n📤 Exporting to Linear team: {team_id}")
     if parent_id:
         print(f"   Parent issue: {parent_id}")
 
-    print("\nThis would create Linear issues via API:")
-    for st in decomposition.subtasks:
-        print(f"  - {st.title} ({st.estimate_hours}h)")
+    human_user_ids = human_user_ids or {}
 
-    print("\n⚠️  Linear API integration not implemented in this template.")
-    print("   See references/linear-integration.md for implementation guide.")
+    print("\nTask Assignment Summary:")
+    agent_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.AGENT and not st.requires_human_review]
+    agent_review_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.AGENT and st.requires_human_review]
+    human_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.HUMAN]
+    either_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.EITHER]
+
+    print(f"  🤖 Agent-assigned tasks: {len(agent_tasks)}")
+    print(f"  🤖⚠️  Agent tasks requiring human review: {len(agent_review_tasks)}")
+    print(f"  👤 Human-assigned tasks: {len(human_tasks)}")
+    print(f"  🔄 Either agent or human: {len(either_tasks)}")
+
+    print("\nWould create Linear issues with assignments:")
+    for st in decomposition.subtasks:
+        # Determine assignee
+        if st.assignee:
+            assignee = st.assignee
+        elif st.assignee_type == AssigneeType.AGENT:
+            assignee = agent_user_id
+        elif st.assignee_type == AssigneeType.HUMAN:
+            # Try to match by labels
+            assignee = None
+            for label in st.labels:
+                if label in human_user_ids:
+                    assignee = human_user_ids[label]
+                    break
+            if not assignee:
+                assignee = human_user_ids.get("default", "unassigned")
+        else:  # EITHER
+            assignee = agent_user_id  # Default to agent for flexibility
+
+        icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
+        review_mark = " ⚠️ [NEEDS REVIEW]" if st.requires_human_review else ""
+        print(f"  {icon} #{st.id}: {st.title}")
+        print(f"      Assignee: {assignee}{review_mark}")
+        print(f"      Estimate: {st.estimate_hours}h | Priority: {st.priority.name}")
+        if st.dependencies:
+            print(f"      Depends on: #{', #'.join(map(str, st.dependencies))}")
+
+    print("\n💡 Assignment Rules Applied:")
+    print("  • Agent tasks: Fully automated work (code, tests, refactoring)")
+    print("  • Human tasks: Decisions, approvals, stakeholder work")
+    print("  • Review required: Security, payments, critical systems")
+    print("\n⚠️  Linear API integration requires authentication.")
+    print("   Configure with: export LINEAR_API_KEY=your_key_here")
+    print("   Or use Linear MCP: claude mcp add linear npx @linear/mcp")
 
 
 def export_to_github(decomposition: Decomposition, repo: str):
@@ -379,13 +527,15 @@ def generate_dependency_graph(decomposition: Decomposition, output_file: str):
 
 def main():
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Decompose tasks into actionable subtasks")
+    parser = argparse.ArgumentParser(description="Decompose tasks into actionable subtasks with intelligent agent/human assignment")
     parser.add_argument("task", help="Task description to decompose")
     parser.add_argument("--project", help="Project context")
     parser.add_argument("--complexity", choices=["low", "medium", "high"], default="medium")
     parser.add_argument("--export-linear", action="store_true")
     parser.add_argument("--team-id", help="Linear team ID")
     parser.add_argument("--parent-id", help="Linear parent issue ID")
+    parser.add_argument("--agent-user", default="agent", help="Linear user ID for agent-assigned tasks (default: 'agent')")
+    parser.add_argument("--human-users", help="Comma-separated role:user_id pairs (e.g., 'backend:user123,frontend:user456,default:user789')")
     parser.add_argument("--export-github", action="store_true")
     parser.add_argument("--repo", help="GitHub repository (owner/repo)")
     parser.add_argument("--graph", help="Generate dependency graph to file")
@@ -424,7 +574,16 @@ def main():
         if not args.team_id:
             print("Error: --team-id required for Linear export")
             sys.exit(1)
-        export_to_linear(decomposition, args.team_id, args.parent_id)
+
+        # Parse human users mapping
+        human_users = {}
+        if args.human_users:
+            for pair in args.human_users.split(','):
+                if ':' in pair:
+                    role, user_id = pair.split(':', 1)
+                    human_users[role.strip()] = user_id.strip()
+
+        export_to_linear(decomposition, args.team_id, args.parent_id, args.agent_user, human_users)
 
     # Export to GitHub
     if args.export_github:
