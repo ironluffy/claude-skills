@@ -19,7 +19,7 @@ Install the entire skill collection:
 
 ```bash
 # Register this repository
-/plugin marketplace add yourusername/claude-skills
+/plugin marketplace add ironluffy/claude-skills
 
 # Install skills
 /plugin install universal-claude-skills
@@ -484,4 +484,4 @@ Want to contribute one of these or suggest others? Open an issue!
 
 **Happy Skill Building! 🚀**
 
-For questions or feedback, please [open an issue](https://github.com/yourusername/claude-skills/issues).
+For questions or feedback, please [open an issue](https://github.com/ironluffy/claude-skills/issues).

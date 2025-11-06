@@ -142,4 +142,4 @@ Planned examples:
 
 ---
 
-**Have suggestions for examples?** [Open an issue](https://github.com/yourusername/claude-skills/issues)
+**Have suggestions for examples?** [Open an issue](https://github.com/ironluffy/claude-skills/issues)

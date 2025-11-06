@@ -5,9 +5,9 @@
   "description": "Collection of universally useful Claude skills for development, project management, and workflow automation",
   "author": "Your Name",
   "license": "Apache-2.0",
-  "repository": "https://github.com/yourusername/claude-skills",
-  "homepage": "https://github.com/yourusername/claude-skills#readme",
-  "bugs": "https://github.com/yourusername/claude-skills/issues",
+  "repository": "https://github.com/ironluffy/claude-skills",
+  "homepage": "https://github.com/ironluffy/claude-skills#readme",
+  "bugs": "https://github.com/ironluffy/claude-skills/issues",
   "keywords": [
     "skills",
     "development",

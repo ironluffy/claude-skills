@@ -74,7 +74,7 @@ pip install pyyaml
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/claude-skills.git
+git clone https://github.com/ironluffy/claude-skills.git
 cd claude-skills
 
 # Create a branch for your changes
@@ -435,8 +435,8 @@ Contributors will be:
 
 ## Questions?
 
-- **Issues**: Open a GitHub issue
-- **Discussions**: Use GitHub Discussions
+- **Issues**: [Open a GitHub issue](https://github.com/ironluffy/claude-skills/issues)
+- **Discussions**: [Use GitHub Discussions](https://github.com/ironluffy/claude-skills/discussions)
 - **Documentation**: Check README.md and skill documentation
 
 ## License

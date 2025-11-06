@@ -8,14 +8,14 @@ Get up and running with Universal Claude Skills in 5 minutes!
 
 ```bash
 # In Claude Code
-/plugin marketplace add yourusername/claude-skills
+/plugin marketplace add ironluffy/claude-skills
 /plugin install universal-claude-skills
 ```
 
 ### Option B: Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/claude-skills.git
+git clone https://github.com/ironluffy/claude-skills.git
 cd claude-skills
 ```
 
@@ -261,7 +261,7 @@ pip install pyyaml  # For package_skill.py validation
 /plugin list
 
 # Re-add if needed
-/plugin marketplace add yourusername/claude-skills
+/plugin marketplace add ironluffy/claude-skills
 ```
 
 ## 8. Next Steps
@@ -282,8 +282,8 @@ pip install pyyaml  # For package_skill.py validation
 
 ### Get Help
 
-- **Issues**: https://github.com/yourusername/claude-skills/issues
-- **Discussions**: https://github.com/yourusername/claude-skills/discussions
+- **Issues**: https://github.com/ironluffy/claude-skills/issues
+- **Discussions**: https://github.com/ironluffy/claude-skills/discussions
 - **Documentation**: README.md and skill docs
 
 ## Quick Reference Card
