@@ -1,0 +1,37 @@
+{
+  "name": "web-app-qa-tests",
+  "version": "1.0.0",
+  "description": "Web application QA test suite using Playwright",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:chromium": "playwright test --project=chromium-desktop",
+    "test:firefox": "playwright test --project=firefox-desktop",
+    "test:webkit": "playwright test --project=webkit-desktop",
+    "test:mobile": "playwright test --project=mobile",
+    "test:tablet": "playwright test --project=tablet",
+    "test:all-browsers": "playwright test --project=chromium-desktop --project=firefox-desktop --project=webkit-desktop",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen",
+    "install:browsers": "playwright install"
+  },
+  "keywords": [
+    "playwright",
+    "testing",
+    "qa",
+    "e2e",
+    "accessibility",
+    "visual-regression"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

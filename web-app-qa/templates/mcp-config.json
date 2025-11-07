@@ -1,0 +1,103 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest",
+        "--caps",
+        "testing,vision",
+        "--headless"
+      ],
+      "description": "Microsoft Playwright MCP server for browser automation and testing",
+      "capabilities": {
+        "testing": "Enable assertion tools (browser_verify_*)",
+        "vision": "Enable coordinate-based interactions",
+        "pdf": "Enable PDF generation"
+      }
+    }
+  },
+
+  "configuration_notes": {
+    "installation": "Add this configuration to your Claude Code MCP settings",
+    "location": "~/.config/claude-code/mcp_settings.json (Linux/Mac) or %APPDATA%/claude-code/mcp_settings.json (Windows)",
+
+    "capabilities_guide": {
+      "testing": {
+        "description": "Enables assertion and verification tools",
+        "tools_enabled": [
+          "browser_verify_element_visible",
+          "browser_verify_text_visible",
+          "browser_verify_value",
+          "browser_verify_list_visible",
+          "browser_generate_locator"
+        ],
+        "use_when": "Writing automated tests with assertions"
+      },
+
+      "vision": {
+        "description": "Enables coordinate-based clicking and interactions",
+        "tools_enabled": [
+          "browser_click_coordinate",
+          "browser_hover_coordinate"
+        ],
+        "use_when": "Interacting with elements by pixel coordinates (advanced use cases)"
+      },
+
+      "pdf": {
+        "description": "Enables PDF generation from web pages",
+        "tools_enabled": [
+          "browser_generate_pdf"
+        ],
+        "use_when": "Capturing pages as PDF documents"
+      }
+    },
+
+    "headless_mode": {
+      "description": "Run browser without visible window",
+      "remove_flag": "Remove '--headless' from args to see browser during tests",
+      "recommended": "Use headless for CI/CD, non-headless for debugging"
+    },
+
+    "alternative_configurations": {
+      "non_headless": {
+        "args": [
+          "@playwright/mcp@latest",
+          "--caps",
+          "testing,vision"
+        ],
+        "description": "Show browser window during automation (useful for debugging)"
+      },
+
+      "minimal": {
+        "args": [
+          "@playwright/mcp@latest",
+          "--headless"
+        ],
+        "description": "Basic browser automation without extra capabilities"
+      },
+
+      "full_featured": {
+        "args": [
+          "@playwright/mcp@latest",
+          "--caps",
+          "testing,vision,pdf",
+          "--headless"
+        ],
+        "description": "All capabilities enabled"
+      }
+    },
+
+    "browser_selection": {
+      "default": "chromium",
+      "available": ["chromium", "firefox", "webkit"],
+      "note": "Browser is selected automatically by Playwright MCP. For specific browser, use Playwright configuration in tests."
+    },
+
+    "resources": {
+      "playwright_mcp": "https://github.com/microsoft/playwright-mcp",
+      "playwright_docs": "https://playwright.dev/docs/intro",
+      "mcp_spec": "https://github.com/modelcontextprotocol/specification",
+      "web_app_qa_skill": "See SKILL.md for usage examples"
+    }
+  }
+}
