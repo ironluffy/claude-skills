@@ -1,0 +1,18 @@
+# Python dependencies for web-app-qa skill scripts
+# Install with: pip install -r requirements.txt
+
+# Playwright for browser automation
+playwright>=1.40.0
+
+# Accessibility testing
+axe-core-python>=4.8.0
+
+# Image processing for visual regression
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# Optional: For enhanced reporting
+jinja2>=3.1.0
+
+# Install Playwright browsers after installing packages:
+# python -m playwright install

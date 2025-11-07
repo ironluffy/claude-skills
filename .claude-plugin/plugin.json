@@ -1,6 +1,6 @@
 {
   "name": "universal-claude-skills",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "Universal Claude Skills",
   "description": "Collection of universally useful Claude skills for development, project management, workflow automation, and system design",
   "author": "Your Name",
@@ -23,14 +23,22 @@
     "architecture-review",
     "security-analysis",
     "performance-optimization",
-    "cost-optimization"
+    "cost-optimization",
+    "qa",
+    "testing",
+    "accessibility",
+    "visual-regression",
+    "cross-browser",
+    "playwright",
+    "wcag"
   ],
   "categories": [
     "Development",
     "Project Management",
     "Productivity",
     "Automation",
-    "Architecture"
+    "Architecture",
+    "QA & Testing"
   ],
   "skills": [
     {
@@ -86,6 +94,23 @@
         "Performance optimization analysis",
         "Cost optimization (30-50% savings)"
       ]
+    },
+    {
+      "name": "web-app-qa",
+      "path": "web-app-qa",
+      "description": "Interactive UI/visual QA workflows using Playwright MCP for test generation, accessibility audits, visual regression, and cross-browser testing",
+      "category": "QA & Testing",
+      "features": [
+        "Test generation from exploration",
+        "WCAG 2.1 AA/AAA accessibility audits",
+        "Visual regression testing",
+        "Cross-browser compatibility (Chrome/Firefox/Safari)",
+        "Interactive QA via natural language"
+      ],
+      "requires": {
+        "mcp": ["playwright"],
+        "python": ["playwright", "axe-core-python", "Pillow", "numpy"]
+      }
     }
   ],
   "engines": {
