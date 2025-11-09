@@ -20,44 +20,37 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 import numpy as np
 from report_generator import HTMLReportGenerator, ReportSection
+from browser_utils import BrowserManager
+from logger import Logger
+from constants import VIEWPORTS, DEFAULT_DIFF_THRESHOLD, DIFF_ENHANCEMENT_FACTOR, MACOS_FONT_PATH, DIFF_LABEL_FONT_SIZE, DIFF_LABEL_HEIGHT
 
 
 class VisualTester:
     """Captures screenshots and performs visual regression testing"""
 
-    VIEWPORTS = {
-        'desktop': {'width': 1920, 'height': 1080},
-        'tablet': {'width': 768, 'height': 1024},
-        'mobile': {'width': 375, 'height': 667},
-        'laptop': {'width': 1366, 'height': 768},
-    }
-
     def __init__(self, url: str, headless: bool = True):
         self.url = url
         self.headless = headless
+        self.logger = Logger()
 
     def capture_baseline(self, output_dir: Path, viewports: List[str]) -> List[Path]:
-        """Capture baseline screenshots at multiple viewport sizes"""
+        """Capture baseline screenshots at multiple viewport sizes using BrowserManager"""
         output_dir.mkdir(parents=True, exist_ok=True)
         captured_files = []
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
+        for viewport_name in viewports:
+            if viewport_name not in VIEWPORTS:
+                self.logger.warning(f"Unknown viewport: {viewport_name}, skipping")
+                continue
 
-            for viewport_name in viewports:
-                if viewport_name not in self.VIEWPORTS:
-                    print(f"[!] Unknown viewport: {viewport_name}, skipping")
-                    continue
+            viewport = VIEWPORTS[viewport_name]
+            self.logger.info(f"Capturing {viewport_name} ({viewport['width']}x{viewport['height']})...")
 
-                viewport = self.VIEWPORTS[viewport_name]
-                print(f"[*] Capturing {viewport_name} ({viewport['width']}x{viewport['height']})...")
-
-                context = browser.new_context(viewport=viewport)
-                page = context.new_page()
+            with BrowserManager('chromium', headless=self.headless, viewport=viewport) as page:
                 page.goto(self.url)
                 page.wait_for_load_state('networkidle')
 
@@ -68,11 +61,7 @@ class VisualTester:
                 # Capture screenshot
                 page.screenshot(path=str(filepath), full_page=True)
                 captured_files.append(filepath)
-                print(f"[✓] Saved: {filepath}")
-
-                context.close()
-
-            browser.close()
+                self.logger.success(f"Saved: {filepath}")
 
         return captured_files
 
@@ -82,7 +71,7 @@ class VisualTester:
         current_url: str,
         output_dir: Path,
         viewports: List[str],
-        threshold: float = 0.05
+        threshold: float = DEFAULT_DIFF_THRESHOLD
     ) -> Dict:
         """Compare current screenshots against baseline"""
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -98,25 +87,25 @@ class VisualTester:
         current_dir = output_dir / 'current'
         current_dir.mkdir(exist_ok=True)
 
-        print(f"[*] Capturing current screenshots...")
+        self.logger.info("Capturing current screenshots...")
         current_files = self.capture_baseline(current_dir, viewports)
 
         # Compare each viewport
         for viewport_name in viewports:
-            if viewport_name not in self.VIEWPORTS:
+            if viewport_name not in VIEWPORTS:
                 continue
 
-            viewport = self.VIEWPORTS[viewport_name]
+            viewport = VIEWPORTS[viewport_name]
             filename = f"{viewport_name}_{viewport['width']}x{viewport['height']}.png"
 
             baseline_path = baseline_dir / filename
             current_path = current_dir / filename
 
             if not baseline_path.exists():
-                print(f"[!] No baseline found for {viewport_name}, skipping comparison")
+                self.logger.warning(f"No baseline found for {viewport_name}, skipping comparison")
                 continue
 
-            print(f"[*] Comparing {viewport_name}...")
+            self.logger.info(f"Comparing {viewport_name}...")
 
             # Perform comparison
             diff_result = self._compare_images(baseline_path, current_path, output_dir, viewport_name, threshold)
@@ -125,10 +114,10 @@ class VisualTester:
 
             if diff_result['passed']:
                 results['passed'] += 1
-                print(f"[✓] {viewport_name}: PASSED (diff: {diff_result['diff_percentage']:.2f}%)")
+                self.logger.success(f"{viewport_name}: PASSED (diff: {diff_result['diff_percentage']:.2f}%)")
             else:
                 results['failed'] += 1
-                print(f"[✗] {viewport_name}: FAILED (diff: {diff_result['diff_percentage']:.2f}% > threshold: {threshold*100}%)")
+                self.logger.error(f"{viewport_name}: FAILED (diff: {diff_result['diff_percentage']:.2f}% > threshold: {threshold*100}%)")
 
         # Save comparison report
         self._save_comparison_report(results, output_dir)
@@ -163,7 +152,7 @@ class VisualTester:
         diff_percentage = (changed_pixels / total_pixels) * 100
 
         # Enhance diff for visualization
-        diff_enhanced = diff.point(lambda x: x * 10)
+        diff_enhanced = diff.point(lambda x: x * DIFF_ENHANCEMENT_FACTOR)
 
         # Create side-by-side comparison
         comparison = self._create_comparison_image(baseline_img, current_img, diff_enhanced, viewport_name, diff_percentage)
@@ -199,22 +188,21 @@ class VisualTester:
     ) -> Image.Image:
         """Create side-by-side comparison with labels"""
         width, height = baseline.size
-        label_height = 40
 
         # Create new image with 3 columns
-        comparison = Image.new('RGB', (width * 3, height + label_height), 'white')
+        comparison = Image.new('RGB', (width * 3, height + DIFF_LABEL_HEIGHT), 'white')
 
         # Add labels
         draw = ImageDraw.Draw(comparison)
         try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 20)
+            font = ImageFont.truetype(MACOS_FONT_PATH, DIFF_LABEL_FONT_SIZE)
         except:
             font = ImageFont.load_default()
 
         # Paste images
-        comparison.paste(baseline, (0, label_height))
-        comparison.paste(current, (width, label_height))
-        comparison.paste(diff, (width * 2, label_height))
+        comparison.paste(baseline, (0, DIFF_LABEL_HEIGHT))
+        comparison.paste(current, (width, DIFF_LABEL_HEIGHT))
+        comparison.paste(diff, (width * 2, DIFF_LABEL_HEIGHT))
 
         # Draw labels
         draw.text((width // 2 - 40, 10), "BASELINE", fill='black', font=font)
@@ -229,7 +217,7 @@ class VisualTester:
         json_path = output_dir / 'comparison_report.json'
         with open(json_path, 'w') as f:
             json.dump(results, f, indent=2)
-        print(f"[✓] JSON report saved: {json_path}")
+        self.logger.success(f"JSON report saved: {json_path}")
 
         # Create HTML report
         report = HTMLReportGenerator(
@@ -296,7 +284,6 @@ class VisualTester:
         # Save report
         html_path = output_dir / 'comparison_report.html'
         report.save(html_path)
-        print(f"[✓] HTML report saved: {html_path}")
 
 
 def main():

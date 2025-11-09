@@ -14,35 +14,29 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page
 from axe_core_python.sync_playwright import Axe
 from report_generator import HTMLReportGenerator, ReportSection
+from browser_utils import BrowserManager
+from logger import Logger
+from constants import WCAG_LEVELS, DEFAULT_WCAG_STANDARD
 
 
 class AccessibilityAuditor:
     """Performs comprehensive accessibility audits using axe-core"""
 
-    WCAG_LEVELS = {
-        'WCAG-A': ['wcag2a', 'wcag21a'],
-        'WCAG-AA': ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
-        'WCAG-AAA': ['wcag2a', 'wcag2aa', 'wcag2aaa', 'wcag21a', 'wcag21aa', 'wcag21aaa']
-    }
-
-    def __init__(self, url: str, standard: str = 'WCAG-AA', headless: bool = True):
+    def __init__(self, url: str, standard: str = DEFAULT_WCAG_STANDARD, headless: bool = True):
         self.url = url
         self.standard = standard
         self.headless = headless
         self.results = None
         self.screenshot_path = None
+        self.logger = Logger()
 
     def run_audit(self, include_screenshots: bool = False) -> Dict:
-        """Run accessibility audit on the page"""
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
-            context = browser.new_context()
-            page = context.new_page()
-
-            print(f"[*] Navigating to {self.url}")
+        """Run accessibility audit on the page using BrowserManager"""
+        with BrowserManager('chromium', headless=self.headless) as page:
+            self.logger.info(f"Navigating to {self.url}")
             page.goto(self.url)
             page.wait_for_load_state('networkidle')
 
@@ -52,19 +46,17 @@ class AccessibilityAuditor:
                 screenshot_dir.mkdir(exist_ok=True)
                 self.screenshot_path = screenshot_dir / f"audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                 page.screenshot(path=str(self.screenshot_path), full_page=True)
-                print(f"[*] Screenshot saved: {self.screenshot_path}")
+                self.logger.info(f"Screenshot saved: {self.screenshot_path}")
 
             # Run axe-core accessibility checks
-            print(f"[*] Running {self.standard} accessibility audit...")
+            self.logger.info(f"Running {self.standard} accessibility audit...")
             axe = Axe()
 
             # Get tags for WCAG level
-            tags = self.WCAG_LEVELS.get(self.standard, self.WCAG_LEVELS['WCAG-AA'])
+            tags = WCAG_LEVELS.get(self.standard, WCAG_LEVELS[DEFAULT_WCAG_STANDARD])
 
             # Run scan with axe-core
             results = axe.run(page, {'runOnly': tags})
-
-            browser.close()
 
         self.results = results
         return results
@@ -97,9 +89,9 @@ class AccessibilityAuditor:
         return categorized
 
     def print_summary(self) -> None:
-        """Print audit summary to console"""
+        """Print audit summary to console using logger"""
         if not self.results:
-            print("[!] No results available")
+            self.logger.warning("No results available")
             return
 
         violations = self.results.get('violations', [])
@@ -108,9 +100,7 @@ class AccessibilityAuditor:
 
         categorized = self.categorize_issues()
 
-        print("\n" + "="*60)
-        print(f"ACCESSIBILITY AUDIT SUMMARY - {self.standard}")
-        print("="*60)
+        self.logger.section(f"ACCESSIBILITY AUDIT SUMMARY - {self.standard}", '=', 60)
         print(f"URL: {self.url}")
         print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print()
@@ -153,7 +143,7 @@ class AccessibilityAuditor:
     def generate_html_report(self, output_path: Path) -> None:
         """Generate detailed HTML report using professional report generator"""
         if not self.results:
-            print("[!] No results available for report generation")
+            self.logger.warning("No results available for report generation")
             return
 
         violations = self.results.get('violations', [])
@@ -219,7 +209,6 @@ class AccessibilityAuditor:
 
         # Save report
         report.save(output_path)
-        print(f"[✓] HTML report generated: {output_path}")
 
     def _format_issue_content(self, issue: Dict) -> str:
         """Format issue content for report generator"""

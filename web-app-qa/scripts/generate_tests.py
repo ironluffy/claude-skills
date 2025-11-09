@@ -13,7 +13,10 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Dict, Optional
-from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
+from playwright.sync_api import Page
+from browser_utils import BrowserManager
+from logger import Logger
+from constants import DEFAULT_NAVIGATION_TIMEOUT, NETWORK_IDLE_TIMEOUT
 
 
 class TestRecorder:
@@ -25,40 +28,32 @@ class TestRecorder:
         self.headless = headless
         self.actions: List[Dict] = []
         self.assertions: List[Dict] = []
+        self.logger = Logger()
 
     def explore_page(self) -> None:
-        """Explore the page and capture structure"""
+        """Explore the page and capture structure using BrowserManager"""
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=self.headless)
-                try:
-                    context = browser.new_context()
-                    page = context.new_page()
+            with BrowserManager('chromium', headless=self.headless, timeout=DEFAULT_NAVIGATION_TIMEOUT) as page:
+                # Navigate to URL
+                self.logger.info(f"Navigating to {self.url}")
+                page.goto(self.url, wait_until='domcontentloaded')
+                self.actions.append({
+                    'type': 'goto',
+                    'url': self.url
+                })
 
-                    # Navigate to URL
-                    print(f"[*] Navigating to {self.url}")
-                    page.goto(self.url, wait_until='domcontentloaded', timeout=30000)
-                    self.actions.append({
-                        'type': 'goto',
-                        'url': self.url
-                    })
+                # Wait for page to load
+                page.wait_for_load_state('networkidle', timeout=NETWORK_IDLE_TIMEOUT)
 
-                    # Wait for page to load
-                    page.wait_for_load_state('networkidle', timeout=10000)
+                # Capture page structure
+                self.logger.info("Analyzing page structure...")
+                self._analyze_page_structure(page)
 
-                    # Capture page structure
-                    print(f"[*] Analyzing page structure...")
-                    self._analyze_page_structure(page)
+                # Generate test code
+                self.logger.info(f"Generating test code for scenario: {self.scenario}")
 
-                    # Generate test code
-                    print(f"[*] Generating test code for scenario: {self.scenario}")
-
-                finally:
-                    # Ensure browser closes properly
-                    context.close()
-                    browser.close()
         except Exception as e:
-            print(f"[✗] Error during page exploration: {e}")
+            self.logger.error(f"Error during page exploration: {e}")
             raise
 
     def _analyze_page_structure(self, page: Page) -> None:
@@ -75,7 +70,7 @@ class TestRecorder:
                 'inputs': page.locator('input').count()
             }
 
-            print(f"[*] Page Analysis:")
+            self.logger.info("Page Analysis:")
             print(f"    Title: {structure['title']}")
             print(f"    Interactive elements: {structure['interactive_elements']}")
             print(f"    Forms: {structure['forms']}")
@@ -83,7 +78,7 @@ class TestRecorder:
             print(f"    Links: {structure['links']}")
             print(f"    Inputs: {structure['inputs']}")
         except Exception as e:
-            print(f"[!] Warning: Could not fully analyze page structure: {e}")
+            self.logger.warning(f"Could not fully analyze page structure: {e}")
 
     def generate_test_code(self, output_path: Path) -> str:
         """Generate Playwright test code from recorded actions"""
@@ -128,8 +123,8 @@ test.describe('{self.scenario}', () => {{
 
         # Write test file
         output_path.write_text(test_code)
-        print(f"[✓] Test generated: {output_path}")
-        print(f"[!] Note: Test contains placeholders - use with Claude Code to fill in specific interactions")
+        self.logger.success(f"Test generated: {output_path}")
+        self.logger.warning("Note: Test contains placeholders - use with Claude Code to fill in specific interactions")
 
 
 def generate_from_scenario(url: str, scenario: str, output: Path, headless: bool = False) -> None:

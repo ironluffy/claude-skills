@@ -14,90 +14,74 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
-from playwright.sync_api import sync_playwright, Page, Browser, BrowserType
+from playwright.sync_api import Page
 import time
 from report_generator import HTMLReportGenerator, ReportSection
+from browser_utils import BrowserManager
+from logger import Logger
+from constants import SUPPORTED_BROWSERS, BROWSER_ALIASES
 
 
 class CrossBrowserTester:
     """Orchestrates tests across multiple browsers"""
-
-    BROWSER_ENGINES = {
-        'chrome': 'chromium',
-        'chromium': 'chromium',
-        'firefox': 'firefox',
-        'webkit': 'webkit',
-        'safari': 'webkit'
-    }
 
     def __init__(self, url: str, flow_description: str = None, headless: bool = True):
         self.url = url
         self.flow_description = flow_description
         self.headless = headless
         self.results = []
+        self.logger = Logger()
 
     def test_browsers(self, browsers: List[str]) -> List[Dict]:
-        """Test URL across multiple browsers"""
+        """Test URL across multiple browsers using BrowserManager"""
         results = []
 
-        with sync_playwright() as p:
-            for browser_name in browsers:
-                if browser_name not in self.BROWSER_ENGINES:
-                    print(f"[!] Unknown browser: {browser_name}, skipping")
-                    continue
+        for browser_name in browsers:
+            # Normalize browser name using aliases
+            engine = BROWSER_ALIASES.get(browser_name.lower(), browser_name.lower())
 
-                engine = self.BROWSER_ENGINES[browser_name]
-                print(f"\n[*] Testing on {browser_name.upper()} ({engine})...")
+            if engine not in SUPPORTED_BROWSERS:
+                self.logger.warning(f"Unknown browser: {browser_name}, skipping")
+                continue
 
-                try:
-                    result = self._test_single_browser(p, engine, browser_name)
-                    results.append(result)
-                except Exception as e:
-                    print(f"[✗] {browser_name} failed: {e}")
-                    results.append({
-                        'browser': browser_name,
-                        'engine': engine,
-                        'status': 'ERROR',
-                        'error': str(e),
-                        'tests': []
-                    })
+            self.logger.info(f"Testing on {browser_name.upper()} ({engine})...")
+
+            try:
+                result = self._test_single_browser(engine, browser_name)
+                results.append(result)
+            except Exception as e:
+                self.logger.error(f"{browser_name} failed: {e}")
+                results.append({
+                    'browser': browser_name,
+                    'engine': engine,
+                    'status': 'ERROR',
+                    'error': str(e),
+                    'duration': 0.0,
+                    'details': str(e),
+                    'tests': []
+                })
 
         self.results = results
         return results
 
-    def _test_single_browser(self, playwright, engine: str, browser_name: str) -> Dict:
-        """Test on a single browser"""
+    def _test_single_browser(self, engine: str, browser_name: str) -> Dict:
+        """Test on a single browser using BrowserManager"""
         start_time = time.time()
-
-        # Launch browser
-        if engine == 'chromium':
-            browser = playwright.chromium.launch(headless=self.headless)
-        elif engine == 'firefox':
-            browser = playwright.firefox.launch(headless=self.headless)
-        elif engine == 'webkit':
-            browser = playwright.webkit.launch(headless=self.headless)
-        else:
-            raise ValueError(f"Unknown engine: {engine}")
-
-        context = browser.new_context()
-        page = context.new_page()
-
         tests = []
 
-        # Test 1: Page Load
-        test_result = self._test_page_load(page, browser_name)
-        tests.append(test_result)
+        with BrowserManager(browser_type=engine, headless=self.headless) as page:
+            # Test 1: Page Load
+            test_result = self._test_page_load(page, browser_name)
+            tests.append(test_result)
 
-        if test_result['status'] == 'PASS':
-            # Test 2: Basic Interactions (if page loaded successfully)
-            interaction_result = self._test_basic_interactions(page, browser_name)
-            tests.append(interaction_result)
+            if test_result['status'] == 'PASS':
+                # Test 2: Basic Interactions (if page loaded successfully)
+                interaction_result = self._test_basic_interactions(page, browser_name)
+                tests.append(interaction_result)
 
-            # Test 3: Console Errors
-            console_result = self._test_console_errors(page, browser_name)
-            tests.append(console_result)
-
-        browser.close()
+                # Test 3: Console Errors
+                console_result = self._test_console_errors(page, browser_name)
+                tests.append(console_result)
 
         elapsed_time = time.time() - start_time
 
@@ -107,16 +91,20 @@ class CrossBrowserTester:
 
         if failed:
             overall_status = 'FAIL'
+            details = 'All tests passed'
         elif warnings:
             overall_status = 'WARN'
+            details = 'Some tests have warnings'
         else:
             overall_status = 'PASS'
+            details = 'All tests passed'
 
         return {
             'browser': browser_name,
             'engine': engine,
             'status': overall_status,
-            'elapsed_time': elapsed_time,
+            'duration': elapsed_time,
+            'details': details,
             'tests': tests
         }
 
@@ -280,7 +268,7 @@ class CrossBrowserTester:
     def generate_html_report(self, output_path: Path) -> None:
         """Generate HTML report with test matrix using professional report generator"""
         if not self.results:
-            print("[!] No results available for report generation")
+            self.logger.warning("No results available for report generation")
             return
 
         # Create report
@@ -391,7 +379,6 @@ class CrossBrowserTester:
 
         # Save report
         report.save(output_path)
-        print(f"[✓] HTML report generated: {output_path}")
 
 
 def main():
