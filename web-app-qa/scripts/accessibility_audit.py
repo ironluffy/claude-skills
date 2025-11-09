@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.sync_api import sync_playwright, Page
 from axe_core_python.sync_playwright import Axe
+from report_generator import HTMLReportGenerator, ReportSection
 
 
 class AccessibilityAuditor:
@@ -150,7 +151,7 @@ class AccessibilityAuditor:
         print("="*60)
 
     def generate_html_report(self, output_path: Path) -> None:
-        """Generate detailed HTML report"""
+        """Generate detailed HTML report using professional report generator"""
         if not self.results:
             print("[!] No results available for report generation")
             return
@@ -160,105 +161,94 @@ class AccessibilityAuditor:
         incomplete = self.results.get('incomplete', [])
         categorized = self.categorize_issues()
 
-        html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accessibility Audit Report - {self.url}</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; line-height: 1.6; }}
-        h1 {{ color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }}
-        h2 {{ color: #555; margin-top: 30px; }}
-        .summary {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-        .stat {{ display: inline-block; margin: 10px 20px 10px 0; }}
-        .stat-label {{ font-weight: bold; }}
-        .critical {{ background: #fee; border-left: 4px solid #d00; padding: 15px; margin: 15px 0; }}
-        .serious {{ background: #fff3cd; border-left: 4px solid #ff9800; padding: 15px; margin: 15px 0; }}
-        .moderate {{ background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin: 15px 0; }}
-        .pass {{ color: #0a0; }}
-        .issue-title {{ font-weight: bold; font-size: 1.1em; margin-bottom: 8px; }}
-        .issue-description {{ color: #666; margin: 5px 0; }}
-        .issue-help {{ background: #f9f9f9; padding: 10px; margin: 10px 0; border-radius: 4px; }}
-        .wcag-tags {{ color: #0066cc; font-size: 0.9em; }}
-        code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }}
-    </style>
-</head>
-<body>
-    <h1>Accessibility Audit Report</h1>
+        # Create report
+        report = HTMLReportGenerator(
+            title="Accessibility Audit Report",
+            description=f"WCAG compliance analysis for {self.url}"
+        )
 
-    <div class="summary">
-        <div class="stat"><span class="stat-label">URL:</span> {self.url}</div><br>
-        <div class="stat"><span class="stat-label">Standard:</span> {self.standard}</div><br>
-        <div class="stat"><span class="stat-label">Date:</span> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div><br>
-        <hr style="margin: 15px 0;">
-        <div class="stat"><span class="stat-label">🚨 Critical:</span> {len(categorized['critical'])}</div>
-        <div class="stat"><span class="stat-label">⚠️  Serious:</span> {len(categorized['serious'])}</div>
-        <div class="stat"><span class="stat-label">⚡ Moderate:</span> {len(categorized['moderate'])}</div>
-        <div class="stat"><span class="stat-label">ℹ️  Minor:</span> {len(categorized['minor'])}</div>
-        <div class="stat"><span class="stat-label pass">✅ Passed:</span> {len(passes)}</div>
-    </div>
-"""
+        # Add metadata
+        report.add_metadata('URL', self.url)
+        report.add_metadata('Standard', self.standard)
+        report.add_metadata('Test Date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
-        # Critical Issues
+        # Add summary statistics
+        summary_stats = {
+            '🚨 Critical': len(categorized['critical']),
+            '⚠️  Serious': len(categorized['serious']),
+            '⚡ Moderate': len(categorized['moderate']),
+            'ℹ️  Minor': len(categorized['minor']),
+            '✅ Passed': len(passes),
+        }
+
+        summary_html = report.generate_summary_stats(summary_stats)
+        report.add_section(ReportSection(
+            title="Summary",
+            content=summary_html
+        ))
+
+        # Add Critical Issues
         if categorized['critical']:
-            html += f"<h2>🚨 Critical Issues ({len(categorized['critical'])})</h2>"
             for issue in categorized['critical']:
-                html += self._format_issue(issue, 'critical')
+                content = self._format_issue_content(issue)
+                report.add_section(ReportSection(
+                    title=issue['description'],
+                    content=content,
+                    severity='critical'
+                ))
 
-        # Serious Issues
+        # Add Serious Issues
         if categorized['serious']:
-            html += f"<h2>⚠️  Serious Issues ({len(categorized['serious'])})</h2>"
             for issue in categorized['serious']:
-                html += self._format_issue(issue, 'serious')
+                content = self._format_issue_content(issue)
+                report.add_section(ReportSection(
+                    title=issue['description'],
+                    content=content,
+                    severity='warning'
+                ))
 
-        # Moderate Issues
+        # Add Moderate Issues
         if categorized['moderate']:
-            html += f"<h2>⚡ Moderate Issues ({len(categorized['moderate'])})</h2>"
             for issue in categorized['moderate']:
-                html += self._format_issue(issue, 'moderate')
+                content = self._format_issue_content(issue)
+                report.add_section(ReportSection(
+                    title=issue['description'],
+                    content=content,
+                    severity='info'
+                ))
 
-        html += """
-</body>
-</html>
-"""
-
-        # Write report
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html)
+        # Save report
+        report.save(output_path)
         print(f"[✓] HTML report generated: {output_path}")
 
-    def _format_issue(self, issue: Dict, severity: str) -> str:
-        """Format a single issue for HTML report"""
+    def _format_issue_content(self, issue: Dict) -> str:
+        """Format issue content for report generator"""
         tags = ', '.join(issue.get('tags', []))
         node_count = len(issue.get('nodes', []))
 
         html = f"""
-        <div class="{severity}">
-            <div class="issue-title">{issue['description']}</div>
-            <div class="issue-description">
-                <strong>Impact:</strong> {issue['impact'].upper()} |
-                <strong>Affects:</strong> {node_count} element(s)
-            </div>
-            <div class="wcag-tags">WCAG Tags: {tags}</div>
-            <div class="issue-help">
-                <strong>How to fix:</strong> {issue['help']}
-                <br><a href="{issue['helpUrl']}" target="_blank">Learn more</a>
-            </div>
-"""
+        <div class="metadata">
+            <div class="metadata-item"><span class="metadata-label">Impact:</span> {issue['impact'].upper()}</div>
+            <div class="metadata-item"><span class="metadata-label">Affects:</span> {node_count} element(s)</div>
+            <div class="metadata-item"><span class="metadata-label">WCAG Tags:</span> {tags}</div>
+        </div>
+
+        <h3>How to Fix</h3>
+        <p>{issue['help']}</p>
+        <p><a href="{issue['helpUrl']}" target="_blank">📖 Learn more about this issue</a></p>
+        """
 
         # Add affected elements (first 3)
         if issue.get('nodes'):
-            html += "<details><summary>Affected Elements</summary><ul>"
+            html += "<details><summary><strong>Affected Elements</strong></summary><ul>"
             for node in issue['nodes'][:3]:
                 target = node.get('target', [''])[0]
                 html_snippet = node.get('html', 'N/A')
-                html += f"<li><code>{target}</code><br><pre>{html_snippet}</pre></li>"
+                html += f"<li><code>{target}</code><br><pre><code>{html_snippet}</code></pre></li>"
             if len(issue['nodes']) > 3:
-                html += f"<li>... and {len(issue['nodes']) - 3} more</li>"
+                html += f"<li><em>... and {len(issue['nodes']) - 3} more element(s)</em></li>"
             html += "</ul></details>"
 
-        html += "</div>"
         return html
 
 

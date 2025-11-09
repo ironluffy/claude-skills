@@ -23,6 +23,7 @@ from typing import List, Dict, Tuple, Optional
 from playwright.sync_api import sync_playwright, Page
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 import numpy as np
+from report_generator import HTMLReportGenerator, ReportSection
 
 
 class VisualTester:
@@ -223,58 +224,78 @@ class VisualTester:
         return comparison
 
     def _save_comparison_report(self, results: Dict, output_dir: Path) -> None:
-        """Save comparison results to JSON and HTML"""
+        """Save comparison results to JSON and HTML using professional report generator"""
         # Save JSON
         json_path = output_dir / 'comparison_report.json'
         with open(json_path, 'w') as f:
             json.dump(results, f, indent=2)
         print(f"[✓] JSON report saved: {json_path}")
 
-        # Generate HTML report
-        html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visual Regression Report</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; }}
-        h1 {{ color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }}
-        .summary {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-        .comparison {{ margin: 30px 0; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }}
-        .comparison img {{ max-width: 100%; height: auto; }}
-        .passed {{ color: #0a0; font-weight: bold; }}
-        .failed {{ color: #d00; font-weight: bold; }}
-    </style>
-</head>
-<body>
-    <h1>Visual Regression Test Report</h1>
-    <div class="summary">
-        <p><strong>Date:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        <p><strong>Total Tests:</strong> {results['total']}</p>
-        <p><strong>Passed:</strong> <span class="passed">{results['passed']}</span></p>
-        <p><strong>Failed:</strong> <span class="failed">{results['failed']}</span></p>
-        <p><strong>Threshold:</strong> {results['threshold'] * 100}%</p>
-    </div>
-"""
+        # Create HTML report
+        report = HTMLReportGenerator(
+            title="Visual Regression Test Report",
+            description="Screenshot comparison and visual difference analysis"
+        )
 
+        # Add metadata
+        report.add_metadata('Test Date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        report.add_metadata('Threshold', f"{results['threshold'] * 100}%")
+
+        # Add summary statistics
+        summary_stats = {
+            'Total Tests': results['total'],
+            '✅ Passed': results['passed'],
+            '❌ Failed': results['failed'],
+            'Pass Rate': f"{(results['passed'] / results['total'] * 100):.1f}%" if results['total'] > 0 else 'N/A'
+        }
+
+        summary_html = report.generate_summary_stats(summary_stats)
+        report.add_section(ReportSection(
+            title="Summary",
+            content=summary_html
+        ))
+
+        # Add comparison results for each viewport
         for comp in results['comparisons']:
-            status = 'passed' if comp['passed'] else 'failed'
-            html += f"""
-    <div class="comparison">
-        <h2>{comp['viewport']} - <span class="{status}">{status.upper()}</span></h2>
-        <p><strong>Difference:</strong> {comp['diff_percentage'] * 100:.2f}%</p>
-        <img src="file://{comp['comparison']}" alt="{comp['viewport']} comparison">
-    </div>
-"""
+            severity = 'success' if comp['passed'] else 'critical'
+            status_text = 'PASSED' if comp['passed'] else 'FAILED'
+            diff_pct = comp['diff_percentage'] * 100
 
-        html += """
-</body>
-</html>
-"""
+            # Create content with image and details
+            content = f"""
+            <div class="metadata">
+                <div class="metadata-item"><span class="metadata-label">Status:</span> <strong>{status_text}</strong></div>
+                <div class="metadata-item"><span class="metadata-label">Difference:</span> {diff_pct:.2f}%</div>
+                <div class="metadata-item"><span class="metadata-label">Threshold:</span> {results['threshold'] * 100}%</div>
+                <div class="metadata-item"><span class="metadata-label">Baseline:</span> <code>{Path(comp['baseline']).name}</code></div>
+                <div class="metadata-item"><span class="metadata-label">Current:</span> <code>{Path(comp['current']).name}</code></div>
+            </div>
 
+            <h3>Visual Comparison</h3>
+            <img src="file://{comp['comparison']}" alt="{comp['viewport']} comparison" class="screenshot">
+
+            <details>
+                <summary><strong>View Individual Screenshots</strong></summary>
+                <h4>Baseline Image</h4>
+                <img src="file://{comp['baseline']}" alt="Baseline" style="max-width: 100%; border-radius: 4px;">
+
+                <h4>Current Image</h4>
+                <img src="file://{comp['current']}" alt="Current" style="max-width: 100%; border-radius: 4px;">
+
+                <h4>Difference Map</h4>
+                <img src="file://{comp['diff']}" alt="Difference" style="max-width: 100%; border-radius: 4px;">
+            </details>
+            """
+
+            report.add_section(ReportSection(
+                title=f"{comp['viewport'].title()} Viewport",
+                content=content,
+                severity=severity
+            ))
+
+        # Save report
         html_path = output_dir / 'comparison_report.html'
-        html_path.write_text(html)
+        report.save(html_path)
         print(f"[✓] HTML report saved: {html_path}")
 
 

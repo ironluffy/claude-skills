@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.sync_api import sync_playwright, Page, Browser, BrowserType
 import time
+from report_generator import HTMLReportGenerator, ReportSection
 
 
 class CrossBrowserTester:
@@ -277,67 +278,55 @@ class CrossBrowserTester:
                 print(f"  {status_icon} {test['test']}: {test['message']}")
 
     def generate_html_report(self, output_path: Path) -> None:
-        """Generate HTML report with test matrix"""
+        """Generate HTML report with test matrix using professional report generator"""
         if not self.results:
             print("[!] No results available for report generation")
             return
+
+        # Create report
+        report = HTMLReportGenerator(
+            title="Cross-Browser Test Report",
+            description=f"Multi-browser compatibility testing results for {self.url}"
+        )
+
+        # Add metadata
+        report.add_metadata('URL', self.url)
+        report.add_metadata('Test Date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        report.add_metadata('Browsers Tested', str(len(self.results)))
+
+        # Calculate summary statistics
+        passed = sum(1 for r in self.results if r['status'] == 'PASS')
+        failed = sum(1 for r in self.results if r['status'] == 'FAIL')
+        errors = sum(1 for r in self.results if r['status'] == 'ERROR')
+
+        summary_stats = {
+            '✅ Passed': passed,
+            '❌ Failed': failed,
+            '⚠️  Errors': errors,
+            'Total Browsers': len(self.results)
+        }
+
+        summary_html = report.generate_summary_stats(summary_stats)
+        report.add_section(ReportSection(
+            title="Summary",
+            content=summary_html
+        ))
 
         # Build test matrix
         all_tests = set()
         for result in self.results:
             for test in result.get('tests', []):
                 all_tests.add(test['test'])
-
         all_tests = sorted(list(all_tests))
 
-        html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cross-Browser Test Report</title>
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; }}
-        h1 {{ color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; }}
-        .summary {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-        th, td {{ border: 1px solid #ddd; padding: 12px; text-align: left; }}
-        th {{ background: #0066cc; color: white; }}
-        .pass {{ background: #d4edda; color: #155724; font-weight: bold; }}
-        .warn {{ background: #fff3cd; color: #856404; font-weight: bold; }}
-        .fail {{ background: #f8d7da; color: #721c24; font-weight: bold; }}
-        .error {{ background: #e7e7e7; color: #333; }}
-    </style>
-</head>
-<body>
-    <h1>Cross-Browser Test Report</h1>
+        # Create test matrix table
+        headers = ['Test Step'] + [r['browser'].upper() for r in self.results]
+        rows = []
+        cell_classes = []
 
-    <div class="summary">
-        <p><strong>URL:</strong> {self.url}</p>
-        <p><strong>Date:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-        <p><strong>Browsers Tested:</strong> {len(self.results)}</p>
-    </div>
-
-    <h2>Test Matrix</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Test Step</th>
-"""
-
-        # Add browser columns
-        for result in self.results:
-            html += f"                <th>{result['browser'].upper()}</th>\n"
-
-        html += """
-            </tr>
-        </thead>
-        <tbody>
-"""
-
-        # Add test rows
         for test_name in all_tests:
-            html += f"            <tr>\n                <td><strong>{test_name}</strong></td>\n"
+            row = [f"<strong>{test_name}</strong>"]
+            row_classes = ['']
 
             for result in self.results:
                 # Find this test in results
@@ -346,22 +335,62 @@ class CrossBrowserTester:
                 if test_result:
                     status = test_result['status'].lower()
                     message = test_result['message']
-                    html += f'                <td class="{status}">{status.upper()}<br><small>{message}</small></td>\n'
+                    row.append(f'{status.upper()}<br><small style="font-weight:normal;">{message}</small>')
+                    row_classes.append(status)
                 else:
-                    html += '                <td class="error">N/A</td>\n'
+                    row.append('N/A')
+                    row_classes.append('error')
 
-            html += "            </tr>\n"
+            rows.append(row)
+            cell_classes.append(row_classes)
 
-        html += """
-        </tbody>
-    </table>
-</body>
-</html>
-"""
+        # Generate CSS for status styling
+        status_css = """
+        <style>
+            .pass { background: #d4edda !important; color: #155724; font-weight: bold; }
+            .warn { background: #fff3cd !important; color: #856404; font-weight: bold; }
+            .fail { background: #f8d7da !important; color: #721c24; font-weight: bold; }
+            .error { background: #e7e7e7 !important; color: #333; }
+        </style>
+        """
 
-        # Write report
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html)
+        table_html = status_css + report.generate_table(headers, rows, cell_classes)
+
+        report.add_section(ReportSection(
+            title="Test Matrix",
+            content=table_html
+        ))
+
+        # Add detailed results per browser
+        for result in self.results:
+            severity = 'success' if result['status'] == 'PASS' else ('critical' if result['status'] == 'FAIL' else 'warning')
+
+            details_html = f"""
+            <div class="metadata">
+                <div class="metadata-item"><span class="metadata-label">Engine:</span> {result['engine']}</div>
+                <div class="metadata-item"><span class="metadata-label">Status:</span> {result['status']}</div>
+                <div class="metadata-item"><span class="metadata-label">Duration:</span> {result['duration']:.2f}s</div>
+                <div class="metadata-item"><span class="metadata-label">Details:</span> {result['details']}</div>
+            </div>
+
+            <h4>Test Results:</h4>
+            <ul>
+            """
+
+            for test in result.get('tests', []):
+                status_icon = '✅' if test['status'] == 'PASS' else ('⚠️ ' if test['status'] == 'WARN' else '❌')
+                details_html += f"<li>{status_icon} <strong>{test['test']}:</strong> {test['message']}</li>\n"
+
+            details_html += "</ul>"
+
+            report.add_section(ReportSection(
+                title=f"{result['browser'].upper()} Browser",
+                content=details_html,
+                severity=severity
+            ))
+
+        # Save report
+        report.save(output_path)
         print(f"[✓] HTML report generated: {output_path}")
 
 
