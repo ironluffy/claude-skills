@@ -28,53 +28,62 @@ class TestRecorder:
 
     def explore_page(self) -> None:
         """Explore the page and capture structure"""
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless)
-            context = browser.new_context()
-            page = context.new_page()
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=self.headless)
+                try:
+                    context = browser.new_context()
+                    page = context.new_page()
 
-            # Navigate to URL
-            print(f"[*] Navigating to {self.url}")
-            page.goto(self.url)
-            self.actions.append({
-                'type': 'goto',
-                'url': self.url
-            })
+                    # Navigate to URL
+                    print(f"[*] Navigating to {self.url}")
+                    page.goto(self.url, wait_until='domcontentloaded', timeout=30000)
+                    self.actions.append({
+                        'type': 'goto',
+                        'url': self.url
+                    })
 
-            # Wait for page to load
-            page.wait_for_load_state('networkidle')
+                    # Wait for page to load
+                    page.wait_for_load_state('networkidle', timeout=10000)
 
-            # Capture page structure
-            print(f"[*] Analyzing page structure...")
-            self._analyze_page_structure(page)
+                    # Capture page structure
+                    print(f"[*] Analyzing page structure...")
+                    self._analyze_page_structure(page)
 
-            # Generate test code
-            print(f"[*] Generating test code for scenario: {self.scenario}")
+                    # Generate test code
+                    print(f"[*] Generating test code for scenario: {self.scenario}")
 
-            browser.close()
+                finally:
+                    # Ensure browser closes properly
+                    context.close()
+                    browser.close()
+        except Exception as e:
+            print(f"[✗] Error during page exploration: {e}")
+            raise
 
     def _analyze_page_structure(self, page: Page) -> None:
         """Analyze page structure to identify testable elements"""
-        # Get all interactive elements
-        elements = page.locator('button, a, input, select, textarea').all()
+        try:
+            # Get counts of interactive elements
+            structure = {
+                'title': page.title(),
+                'url': page.url,
+                'interactive_elements': page.locator('button, a, input, select, textarea').count(),
+                'forms': page.locator('form').count(),
+                'buttons': page.locator('button').count(),
+                'links': page.locator('a').count(),
+                'inputs': page.locator('input').count()
+            }
 
-        structure = {
-            'title': page.title(),
-            'url': page.url,
-            'interactive_elements': len(elements),
-            'forms': len(page.locator('form').all()),
-            'buttons': len(page.locator('button').all()),
-            'links': len(page.locator('a').all()),
-            'inputs': len(page.locator('input').all())
-        }
-
-        print(f"[*] Page Analysis:")
-        print(f"    Title: {structure['title']}")
-        print(f"    Interactive elements: {structure['interactive_elements']}")
-        print(f"    Forms: {structure['forms']}")
-        print(f"    Buttons: {structure['buttons']}")
-        print(f"    Links: {structure['links']}")
-        print(f"    Inputs: {structure['inputs']}")
+            print(f"[*] Page Analysis:")
+            print(f"    Title: {structure['title']}")
+            print(f"    Interactive elements: {structure['interactive_elements']}")
+            print(f"    Forms: {structure['forms']}")
+            print(f"    Buttons: {structure['buttons']}")
+            print(f"    Links: {structure['links']}")
+            print(f"    Inputs: {structure['inputs']}")
+        except Exception as e:
+            print(f"[!] Warning: Could not fully analyze page structure: {e}")
 
     def generate_test_code(self, output_path: Path) -> str:
         """Generate Playwright test code from recorded actions"""

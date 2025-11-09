@@ -174,7 +174,8 @@ class VisualTester:
         diff_enhanced.save(diff_path)
         comparison.save(comparison_path)
 
-        passed = (diff_percentage / 100) <= threshold
+        # Convert to Python bool for JSON serialization (numpy bool_ is not JSON serializable)
+        passed = bool((diff_percentage / 100) <= threshold)
 
         return {
             'viewport': viewport_name,
@@ -182,8 +183,8 @@ class VisualTester:
             'current': str(current_path),
             'diff': str(diff_path),
             'comparison': str(comparison_path),
-            'diff_percentage': diff_percentage / 100,
-            'threshold': threshold,
+            'diff_percentage': float(diff_percentage / 100),  # Ensure Python float
+            'threshold': float(threshold),
             'passed': passed
         }
 

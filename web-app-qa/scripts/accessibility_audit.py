@@ -15,7 +15,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
 from playwright.sync_api import sync_playwright, Page
-from axe_core_python import AxeCore
+from axe_core_python.sync_playwright import Axe
 
 
 class AccessibilityAuditor:
@@ -55,13 +55,13 @@ class AccessibilityAuditor:
 
             # Run axe-core accessibility checks
             print(f"[*] Running {self.standard} accessibility audit...")
-            axe = AxeCore(page)
+            axe = Axe()
 
             # Get tags for WCAG level
             tags = self.WCAG_LEVELS.get(self.standard, self.WCAG_LEVELS['WCAG-AA'])
 
-            # Run scan
-            results = axe.run(options={'runOnly': {'type': 'tag', 'values': tags}})
+            # Run scan with axe-core
+            results = axe.run(page, {'runOnly': tags})
 
             browser.close()
 
