@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """
 Performance Analyzer - Identify performance bottlenecks and optimization opportunities
+Part of system-design-reviewer skill for Claude Skills
+
+Refactored to use BaseAnalyzer and shared utilities.
 """
 
-import os
 import re
 from pathlib import Path
 
+from analyzer_base import BaseAnalyzer
+from constants import (
+    PERFORMANCE_INDICATORS,
+    N_PLUS_ONE_PATTERNS,
+    CODE_EXTENSIONS
+)
 
-class PerformanceAnalyzer:
+
+class PerformanceAnalyzer(BaseAnalyzer):
     """Analyze performance bottlenecks"""
-
-    def __init__(self, project_path):
-        self.project_path = Path(project_path)
 
     def analyze(self):
         """Run performance analysis"""
+        self._log_analysis_start("Performance")
+
         results = {
             "optimization_count": 0,
             "strengths": [],
@@ -34,6 +42,8 @@ class PerformanceAnalyzer:
         results["low_impact"] = low
 
         results["optimization_count"] = len(high) + len(medium) + len(low)
+
+        self._log_analysis_complete(results)
 
         return results
 
@@ -125,97 +135,47 @@ class PerformanceAnalyzer:
 
     def _has_caching(self):
         """Check for caching implementation"""
-        cache_indicators = ['redis', 'memcache', 'cache']
-        for file in self.project_path.rglob("*"):
-            if file.is_file():
-                try:
-                    if any(indicator in file.name.lower() for indicator in cache_indicators):
-                        return True
-                    if file.suffix in ['.py', '.js', '.java', '.go']:
-                        content = file.read_text().lower()
-                        if any(f"{indicator}" in content for indicator in cache_indicators):
-                            return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(PERFORMANCE_INDICATORS['caching'])
 
     def _has_connection_pooling(self):
         """Check for database connection pooling"""
-        pool_patterns = ['connection.pool', 'pool.size', 'max.connections', 'pooling']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.conf', '.yml', '.yaml']:
-                try:
-                    content = file.read_text().lower()
-                    if any(pattern.replace('.', r'[\s_-]?') in content for pattern in pool_patterns):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(PERFORMANCE_INDICATORS['connection_pooling'])
 
     def _has_async_processing(self):
         """Check for async/background job processing"""
-        async_indicators = ['celery', 'rq', 'sidekiq', 'bull', 'async', 'await', 'queue', 'worker']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.go']:
-                try:
-                    content = file.read_text().lower()
-                    if any(indicator in content for indicator in async_indicators):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(PERFORMANCE_INDICATORS['async_processing'])
 
     def _has_indexes(self):
         """Check for database indexes"""
-        index_patterns = ['create.index', 'index.on', '@index', 'add_index']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.sql', '.py', '.rb', '.js']:
-                try:
-                    content = file.read_text().lower()
-                    if any(pattern.replace('.', r'[\s_]') in content for pattern in index_patterns):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(
+            PERFORMANCE_INDICATORS['database_indexes'],
+            ['.sql', '.py', '.rb', '.js']
+        )
 
     def _has_n_plus_one_queries(self):
         """Check for potential N+1 query problems"""
-        # This is a heuristic check - looks for loops with database queries
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.rb', '.java']:
-                try:
-                    content = file.read_text()
-                    # Look for loops with query keywords
-                    if re.search(r'for\s+.*\sin\s+.*:.*(?:query|find|get|select)', content, re.DOTALL | re.IGNORECASE):
+        code_files = self._get_code_files()
+
+        for file_path in code_files:
+            content = self._read_file_safe(file_path)
+            if content:
+                # Check each N+1 pattern
+                for pattern in N_PLUS_ONE_PATTERNS:
+                    if re.search(pattern, content, re.DOTALL | re.IGNORECASE):
                         return True
-                except Exception:
-                    continue
+
         return False
 
     def _has_cdn(self):
         """Check for CDN usage"""
-        cdn_patterns = ['cloudfront', 'cloudflare', 'akamai', 'fastly', 'cdn']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(pattern in content for pattern in cdn_patterns):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(PERFORMANCE_INDICATORS['cdn'])
 
     def _has_compression(self):
         """Check for response compression"""
-        compression_patterns = ['gzip', 'compress', 'deflate', 'brotli']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.conf', '.yml', '.yaml', '.js', '.py']:
-                try:
-                    content = file.read_text().lower()
-                    if any(pattern in content for pattern in compression_patterns):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(
+            PERFORMANCE_INDICATORS['compression'],
+            ['.conf', '.yml', '.yaml', '.js', '.py']
+        )
 
 
 if __name__ == "__main__":

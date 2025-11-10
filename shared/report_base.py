@@ -1,0 +1,241 @@
+"""
+Report Base - Abstract base classes for report generators
+===========================================================
+
+Provides abstract base classes and common functionality for generating
+reports across different skills.
+"""
+
+from abc import ABC, abstractmethod
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+
+
+@dataclass
+class ReportSection:
+    """Represents a section in a report"""
+    title: str
+    content: str
+    severity: Optional[str] = None  # 'critical', 'warning', 'info', 'success'
+
+
+class BaseReportGenerator(ABC):
+    """Abstract base class for report generators
+
+    All report generators should inherit from this class and implement
+    the required abstract methods.
+    """
+
+    def __init__(self, title: str, description: str = ""):
+        self.title = title
+        self.description = description
+        self.sections: List[ReportSection] = []
+        self.metadata: Dict[str, str] = {
+            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'generator': 'Claude Skills'
+        }
+
+    def add_metadata(self, key: str, value: str) -> None:
+        """Add metadata to the report"""
+        self.metadata[key] = value
+
+    def add_section(self, section: ReportSection) -> None:
+        """Add a section to the report"""
+        self.sections.append(section)
+
+    @abstractmethod
+    def generate(self) -> str:
+        """Generate the complete report content
+
+        Returns:
+            str: The generated report content
+        """
+        pass
+
+    def save(self, output_path: Path) -> None:
+        """Save the report to a file
+
+        Args:
+            output_path: Path where the report should be saved
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(self.generate())
+
+
+class HTMLReportBase(BaseReportGenerator):
+    """Base class for HTML report generators
+
+    Provides common HTML styling and structure that can be customized
+    by subclasses.
+    """
+
+    # Base CSS that can be extended by subclasses
+    BASE_STYLE = """
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                        'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a1a1a;
+            border-bottom: 4px solid #0066cc;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+        }
+        h2 {
+            color: #333;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-left: 4px solid #0066cc;
+            padding-left: 15px;
+        }
+        .metadata {
+            color: #666;
+            font-size: 0.95em;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .metadata-item {
+            margin: 5px 0;
+        }
+        .metadata-label {
+            font-weight: bold;
+            display: inline-block;
+            min-width: 120px;
+        }
+        .footer {
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 2px solid #eee;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+    """
+
+    def generate(self) -> str:
+        """Generate basic HTML structure"""
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{self.title}</title>
+    {self.BASE_STYLE}
+</head>
+<body>
+    <div class="container">
+        <h1>{self.title}</h1>
+"""
+
+        if self.description:
+            html += f'        <p style="font-size: 1.1em; color: #666; margin-bottom: 30px;">{self.description}</p>\n'
+
+        # Add metadata
+        html += '        <div class="metadata">\n'
+        for key, value in self.metadata.items():
+            html += f'            <div class="metadata-item"><span class="metadata-label">{key.replace("_", " ").title()}:</span> {value}</div>\n'
+        html += '        </div>\n'
+
+        # Add sections (can be customized by subclasses)
+        for section in self.sections:
+            html += self._render_section(section)
+
+        # Footer
+        html += f'''
+        <div class="footer">
+            <p>Generated by <strong>Claude Skills</strong></p>
+            <p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+    </div>
+</body>
+</html>
+'''
+
+        return html
+
+    def _render_section(self, section: ReportSection) -> str:
+        """Render a single section (can be overridden by subclasses)"""
+        return f'''
+        <div class="section">
+            <h2>{section.title}</h2>
+            {section.content}
+        </div>
+'''
+
+
+class MarkdownReportBase(BaseReportGenerator):
+    """Base class for Markdown report generators"""
+
+    def generate(self) -> str:
+        """Generate basic Markdown structure"""
+        lines = []
+
+        # Title
+        lines.append(f"# {self.title}\n")
+
+        # Description
+        if self.description:
+            lines.append(f"{self.description}\n")
+
+        # Metadata
+        lines.append("## Metadata\n")
+        for key, value in self.metadata.items():
+            lines.append(f"- **{key.replace('_', ' ').title()}:** {value}")
+        lines.append("")
+
+        # Sections
+        for section in self.sections:
+            lines.append(f"## {section.title}\n")
+            lines.append(section.content)
+            lines.append("")
+
+        # Footer
+        lines.append("---")
+        lines.append(f"*Generated by Claude Skills at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
+
+        return "\n".join(lines)
+
+
+class JSONReportBase(BaseReportGenerator):
+    """Base class for JSON report generators"""
+
+    def generate(self) -> str:
+        """Generate JSON structure"""
+        import json
+
+        report_data = {
+            'title': self.title,
+            'description': self.description,
+            'metadata': self.metadata,
+            'sections': [
+                {
+                    'title': section.title,
+                    'content': section.content,
+                    'severity': section.severity
+                }
+                for section in self.sections
+            ]
+        }
+
+        return json.dumps(report_data, indent=2)

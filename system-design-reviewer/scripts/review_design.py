@@ -2,6 +2,8 @@
 """
 System Design Reviewer - Main Orchestrator
 Analyzes system designs and generates comprehensive review reports with diagrams
+
+Refactored to use professional logging and report generation.
 """
 
 import argparse
@@ -11,6 +13,10 @@ from pathlib import Path
 import json
 from datetime import datetime
 
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
+
 # Import analyzers
 try:
     from generate_diagrams import DiagramGenerator
@@ -18,6 +24,7 @@ try:
     from security_analyzer import SecurityAnalyzer
     from performance_analyzer import PerformanceAnalyzer
     from cost_optimizer import CostOptimizer
+    from report_generator import generate_full_review_report
 except ImportError:
     # Allow running from different directories
     pass
@@ -28,7 +35,8 @@ class SystemDesignReviewer:
 
     def __init__(self, project_path, output_path=None):
         self.project_path = Path(project_path).resolve()
-        self.output_path = output_path or "design-review.md"
+        self.output_path = output_path or "design-review.html"
+        self.logger = Logger()
         self.findings = {
             "architecture": {},
             "security": {},
@@ -39,35 +47,34 @@ class SystemDesignReviewer:
 
     def analyze(self):
         """Run complete system design analysis"""
-        print(f"🔍 Analyzing system design: {self.project_path}")
-        print("=" * 80)
+        self.logger.section(f"Analyzing system design: {self.project_path}", '=', 80)
 
         # Generate diagrams
-        print("\n📊 Generating diagrams...")
+        self.logger.info("Generating diagrams...")
         self.generate_diagrams()
 
         # Architecture review
-        print("\n🏗️  Analyzing architecture...")
+        self.logger.info("Analyzing architecture...")
         self.analyze_architecture()
 
         # Security review
-        print("\n🔒 Analyzing security...")
+        self.logger.info("Analyzing security...")
         self.analyze_security()
 
         # Performance review
-        print("\n⚡ Analyzing performance...")
+        self.logger.info("Analyzing performance...")
         self.analyze_performance()
 
         # Cost review
-        print("\n💰 Analyzing costs...")
+        self.logger.info("Analyzing costs...")
         self.analyze_costs()
 
         # Generate report
-        print(f"\n📝 Generating review report: {self.output_path}")
+        self.logger.info(f"Generating review report: {self.output_path}")
         self.generate_report()
 
-        print("\n✅ Review complete!")
-        print(f"📄 Report saved to: {self.output_path}")
+        self.logger.success("Review complete!")
+        self.logger.success(f"Report saved to: {self.output_path}")
 
     def generate_diagrams(self):
         """Generate architecture diagrams"""
@@ -75,9 +82,9 @@ class SystemDesignReviewer:
             generator = DiagramGenerator(self.project_path)
             diagrams = generator.generate_all()
             self.findings["diagrams"] = diagrams
-            print(f"   ✓ Generated {len(diagrams)} diagram types")
+            self.logger.success(f"Generated {len(diagrams)} diagram types")
         except Exception as e:
-            print(f"   ⚠️  Diagram generation partial: {e}")
+            self.logger.warning(f"Diagram generation partial: {e}")
             self.findings["diagrams"] = self._create_sample_diagrams()
 
     def analyze_architecture(self):
@@ -86,9 +93,9 @@ class SystemDesignReviewer:
             analyzer = ArchitectureAnalyzer(self.project_path)
             results = analyzer.analyze()
             self.findings["architecture"] = results
-            print(f"   ✓ Found {results.get('issue_count', 0)} issues")
+            self.logger.success(f"Found {results.get('issue_count', 0)} issues")
         except Exception as e:
-            print(f"   ⚠️  Architecture analysis partial: {e}")
+            self.logger.warning(f"Architecture analysis partial: {e}")
             self.findings["architecture"] = self._create_sample_architecture()
 
     def analyze_security(self):
@@ -99,9 +106,9 @@ class SystemDesignReviewer:
             self.findings["security"] = results
             critical = results.get('critical_count', 0)
             high = results.get('high_count', 0)
-            print(f"   ✓ Found {critical} critical, {high} high issues")
+            self.logger.success(f"Found {critical} critical, {high} high issues")
         except Exception as e:
-            print(f"   ⚠️  Security analysis partial: {e}")
+            self.logger.warning(f"Security analysis partial: {e}")
             self.findings["security"] = self._create_sample_security()
 
     def analyze_performance(self):
@@ -110,9 +117,9 @@ class SystemDesignReviewer:
             analyzer = PerformanceAnalyzer(self.project_path)
             results = analyzer.analyze()
             self.findings["performance"] = results
-            print(f"   ✓ Found {results.get('optimization_count', 0)} optimizations")
+            self.logger.success(f"Found {results.get('optimization_count', 0)} optimizations")
         except Exception as e:
-            print(f"   ⚠️  Performance analysis partial: {e}")
+            self.logger.warning(f"Performance analysis partial: {e}")
             self.findings["performance"] = self._create_sample_performance()
 
     def analyze_costs(self):
@@ -122,24 +129,62 @@ class SystemDesignReviewer:
             results = analyzer.analyze()
             self.findings["cost"] = results
             savings = results.get('potential_savings_pct', 0)
-            print(f"   ✓ Potential savings: {savings}%")
+            self.logger.success(f"Potential savings: {savings}%")
         except Exception as e:
-            print(f"   ⚠️  Cost analysis partial: {e}")
+            self.logger.warning(f"Cost analysis partial: {e}")
             self.findings["cost"] = self._create_sample_cost()
 
     def generate_report(self):
-        """Generate comprehensive markdown report"""
-        report = self._build_report()
+        """Generate comprehensive HTML report using professional report generator"""
+        output_path = Path(self.output_path)
 
         # Ensure output directory exists
-        output_dir = Path(self.output_path).parent
+        output_dir = output_path.parent
         if output_dir and not output_dir.exists():
             output_dir.mkdir(parents=True, exist_ok=True)
 
-        with open(self.output_path, 'w') as f:
+        # Determine output format
+        if output_path.suffix == '.html':
+            self._generate_html_report(output_path)
+        else:
+            # Fallback to markdown for .md files
+            self._generate_markdown_report(output_path)
+
+    def _generate_html_report(self, output_path: Path):
+        """Generate HTML report using report_generator"""
+        try:
+            # Prepare metadata
+            metadata = {
+                'Project': self.project_path.name,
+                'Project Path': str(self.project_path),
+                'Review Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Reviewer': 'System Design Reviewer (Automated)'
+            }
+
+            # Generate full HTML report
+            generate_full_review_report(
+                output_path=output_path,
+                architecture_results=self.findings.get("architecture"),
+                security_results=self.findings.get("security"),
+                performance_results=self.findings.get("performance"),
+                cost_results=self.findings.get("cost"),
+                metadata=metadata
+            )
+        except Exception as e:
+            self.logger.error(f"HTML report generation failed: {e}")
+            # Fallback to markdown
+            md_path = output_path.with_suffix('.md')
+            self.logger.info(f"Falling back to markdown: {md_path}")
+            self._generate_markdown_report(md_path)
+
+    def _generate_markdown_report(self, output_path: Path):
+        """Generate markdown report (fallback)"""
+        report = self._build_markdown_report()
+
+        with open(output_path, 'w') as f:
             f.write(report)
 
-    def _build_report(self):
+    def _build_markdown_report(self):
         """Build markdown report from findings"""
         report_parts = []
 
@@ -283,7 +328,7 @@ High-level overview of findings:
                     if issue.get('file'):
                         sections.append(f"- **File:** `{issue['file']}`")
                     sections.append(f"- **Risk:** {issue['risk']}")
-                    sections.append(f"- **Fix:** {issue['fix']}")
+                    sections.append(f"- **Fix:** {issue.get('fix', issue.get('recommendation', 'N/A'))}")
                     sections.append(f"- **Effort:** {issue['effort']}")
                     sections.append("")
 
@@ -343,7 +388,8 @@ High-level overview of findings:
         sections.append("### Optimization Opportunities\n")
 
         for impact in ["HIGH", "MEDIUM", "LOW"]:
-            opportunities = cost.get(f"{impact.lower()}_impact", [])
+            # Try both high_savings and high_impact naming
+            opportunities = cost.get(f"{impact.lower()}_savings", cost.get(f"{impact.lower()}_impact", []))
             if opportunities:
                 sections.append(f"#### {impact} Impact\n")
                 for opp in opportunities:
@@ -499,14 +545,14 @@ The system has been analyzed across architecture, security, performance, and cos
                 "Network": 30,
                 "Other": 20
             },
-            "high_impact": [{
+            "high_savings": [{
                 "title": "Right-size compute instances",
                 "analysis": "Current CPU utilization 15-20%",
                 "recommendation": "Downgrade to t3.small",
                 "savings": "$100/month (50% reduction)",
                 "risk": "Low (ample headroom)"
             }],
-            "medium_impact": [{
+            "medium_savings": [{
                 "title": "Implement database connection pooling",
                 "analysis": "db.t3.large to handle connection overhead",
                 "recommendation": "Add PgBouncer, downgrade to db.t3.medium",
@@ -520,23 +566,24 @@ def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description="System Design Reviewer - Analyze and review system designs")
     parser.add_argument("project_path", help="Path to project to review")
-    parser.add_argument("-o", "--output", default="design-review.md", help="Output report path")
+    parser.add_argument("-o", "--output", default="design-review.html", help="Output report path")
     parser.add_argument("--json", action="store_true", help="Also output JSON findings")
 
     args = parser.parse_args()
 
     if not os.path.exists(args.project_path):
-        print(f"❌ Error: Project path does not exist: {args.project_path}")
+        logger = Logger()
+        logger.error(f"Project path does not exist: {args.project_path}")
         sys.exit(1)
 
     reviewer = SystemDesignReviewer(args.project_path, args.output)
     reviewer.analyze()
 
     if args.json:
-        json_path = args.output.replace('.md', '.json')
+        json_path = args.output.replace('.html', '.json').replace('.md', '.json')
         with open(json_path, 'w') as f:
             json.dump(reviewer.findings, f, indent=2)
-        print(f"📊 JSON findings saved to: {json_path}")
+        reviewer.logger.success(f"JSON findings saved to: {json_path}")
 
 
 if __name__ == "__main__":

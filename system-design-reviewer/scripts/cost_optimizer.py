@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """
 Cost Optimizer - Analyze cloud costs and identify optimization opportunities
+Part of system-design-reviewer skill for Claude Skills
+
+Refactored to use BaseAnalyzer and shared utilities.
 """
 
-import os
-import re
 from pathlib import Path
 
+from analyzer_base import BaseAnalyzer
+from constants import CLOUD_SERVICE_PATTERNS, INSTANCE_SIZES
 
-class CostOptimizer:
+
+class CostOptimizer(BaseAnalyzer):
     """Analyze cloud cost optimization opportunities"""
-
-    def __init__(self, project_path):
-        self.project_path = Path(project_path)
 
     def analyze(self):
         """Run cost optimization analysis"""
+        self._log_analysis_start("Cost Optimization")
+
         # Estimate current costs based on infrastructure
         current_cost = self._estimate_current_cost()
         optimizations = self._find_optimizations()
@@ -29,13 +32,32 @@ class CostOptimizer:
             "current_cost": current_cost,
             "optimized_cost": optimized_cost,
             "potential_savings_pct": savings_pct,
+            "savings_count": len(optimizations['high']) + len(optimizations['medium']) + len(optimizations['low']),
             "breakdown": self._get_cost_breakdown(current_cost),
-            "high_impact": optimizations.get('high', []),
-            "medium_impact": optimizations.get('medium', []),
-            "low_impact": optimizations.get('low', [])
+            "strengths": self._find_strengths(),
+            "high_savings": optimizations.get('high', []),
+            "medium_savings": optimizations.get('medium', []),
+            "low_savings": optimizations.get('low', [])
         }
 
+        self._log_analysis_complete(results)
+
         return results
+
+    def _find_strengths(self):
+        """Find cost optimization strengths"""
+        strengths = []
+
+        if self._uses_reserved_instances():
+            strengths.append("Using reserved instances for cost savings")
+
+        if self._has_storage_lifecycle():
+            strengths.append("Storage lifecycle policies implemented")
+
+        if not self._is_over_provisioned():
+            strengths.append("Compute resources appear right-sized")
+
+        return strengths or ["Basic cost management in place"]
 
     def _estimate_current_cost(self):
         """Estimate current monthly costs"""
@@ -146,55 +168,46 @@ class CostOptimizer:
 
     def _has_kubernetes(self):
         """Check for Kubernetes deployment"""
-        return any(self.project_path.rglob("kubernetes.yml")) or \
-               any(self.project_path.rglob("k8s/*")) or \
-               any(self.project_path.rglob("*.k8s.yaml"))
+        patterns = ["kubernetes.yml", "k8s/*", "*.k8s.yaml"]
+        for pattern in patterns:
+            if self._find_files_by_pattern(pattern):
+                return True
+        return False
 
     def _has_load_balancer(self):
         """Check for load balancer"""
         lb_indicators = ['loadbalancer', 'alb', 'elb', 'nginx', 'haproxy']
-        for file in self.project_path.rglob("*"):
-            if any(indicator in file.name.lower() for indicator in lb_indicators):
-                return True
-        return False
+        return self._contains_technology(lb_indicators)
 
     def _has_cdn(self):
         """Check for CDN"""
         cdn_indicators = ['cloudfront', 'cloudflare', 'cdn']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(indicator in content for indicator in cdn_indicators):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(cdn_indicators)
 
     def _has_multiple_databases(self):
         """Check for multiple databases"""
-        db_files = list(self.project_path.rglob("*database*")) + \
-                   list(self.project_path.rglob("*db*"))
+        db_files = self._find_files_by_pattern("*database*") + self._find_files_by_pattern("*db*")
         return len(db_files) > 3
 
     def _is_over_provisioned(self):
         """Check if infrastructure appears over-provisioned"""
-        # Look for large instance types
-        large_instances = ['xlarge', '2xlarge', '4xlarge', 'large']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.yml', '.yaml', '.tf', '.json']:
-                try:
-                    content = file.read_text().lower()
-                    if any(instance in content for instance in large_instances):
-                        return True
-                except Exception:
-                    continue
+        config_files = self._get_files_by_extensions(['.yml', '.yaml', '.tf', '.json'])
+
+        for file_path in config_files:
+            content = self._read_file_safe(file_path)
+            if content:
+                content_lower = content.lower()
+                if any(instance in content_lower for instance in INSTANCE_SIZES[-3:]):  # large, xlarge, 2xlarge
+                    return True
+
         return False
 
     def _has_serverless_opportunity(self):
         """Check if serverless would be beneficial"""
         # Look for API-only applications
-        has_api = any(self.project_path.rglob("*api*"))
-        has_simple_structure = len(list(self.project_path.rglob("*.py"))) < 20
+        has_api = bool(self._find_files_by_pattern("*api*"))
+        py_files = self._get_files_by_extensions(['.py'])
+        has_simple_structure = len(py_files) < 20
         return has_api and has_simple_structure
 
     def _has_database_optimization(self):
@@ -204,34 +217,20 @@ class CostOptimizer:
 
     def _has_storage_lifecycle(self):
         """Check for storage lifecycle policies"""
-        lifecycle_indicators = ['lifecycle', 'archiv', 'glacier', 'cold.storage']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(indicator.replace('.', r'[\s_-]?') in content for indicator in lifecycle_indicators):
-                    return True
-            except Exception:
-                continue
-        return False
+        lifecycle_indicators = ['lifecycle', 'archiv', 'glacier', 'cold.storage', 'cold_storage']
+        return self._contains_technology(lifecycle_indicators)
 
     def _uses_reserved_instances(self):
         """Check if reserved instances are used"""
-        reserved_indicators = ['reserved', 'savings.plan']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(indicator.replace('.', r'[\s_-]?') in content for indicator in reserved_indicators):
-                    return True
-            except Exception:
-                continue
-        return False
+        reserved_indicators = ['reserved', 'savings.plan', 'savings_plan']
+        return self._contains_technology(reserved_indicators)
 
     def _has_unused_resources(self):
         """Check for potentially unused resources"""
         # Heuristic: If there are old config files, there might be unused resources
         old_configs = ['old', 'backup', 'deprecated', 'unused', 'temp']
-        for file in self.project_path.rglob("*"):
-            if any(keyword in file.name.lower() for keyword in old_configs):
+        for keyword in old_configs:
+            if self._find_files_by_pattern(f"*{keyword}*"):
                 return True
         return False
 

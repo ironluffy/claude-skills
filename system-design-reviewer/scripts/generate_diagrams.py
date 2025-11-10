@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
 Diagram Generator - Generate Mermaid and ASCII diagrams from source code
+Part of system-design-reviewer skill for Claude Skills
+
+Refactored to use professional logging.
 """
 
 import os
 import re
+import sys
 from pathlib import Path
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
 
 
 class DiagramGenerator:
@@ -13,10 +21,13 @@ class DiagramGenerator:
 
     def __init__(self, project_path):
         self.project_path = Path(project_path)
+        self.logger = Logger()
 
     def generate_all(self):
         """Generate all diagram types"""
-        return {
+        self.logger.info("Generating all diagram types...")
+
+        diagrams = {
             "architecture_mermaid": self.generate_architecture_mermaid(),
             "architecture_ascii": self.generate_architecture_ascii(),
             "sequence_mermaid": self.generate_sequence_mermaid(),
@@ -24,6 +35,9 @@ class DiagramGenerator:
             "er_mermaid": self.generate_er_mermaid(),
             "er_ascii": self.generate_er_ascii()
         }
+
+        self.logger.success(f"Generated {len(diagrams)} diagram types")
+        return diagrams
 
     def generate_architecture_mermaid(self):
         """Generate Mermaid architecture diagram"""
@@ -145,17 +159,20 @@ class DiagramGenerator:
         }
 
         # Scan project structure
-        for root, dirs, files in os.walk(self.project_path):
-            for dir_name in dirs:
-                dir_lower = dir_name.lower()
-                for comp_type, keywords in patterns.items():
-                    if any(keyword in dir_lower for keyword in keywords):
-                        components.append({
-                            "id": comp_type.title(),
-                            "name": dir_name.title(),
-                            "type": comp_type
-                        })
-                        break
+        try:
+            for root, dirs, files in os.walk(self.project_path):
+                for dir_name in dirs:
+                    dir_lower = dir_name.lower()
+                    for comp_type, keywords in patterns.items():
+                        if any(keyword in dir_lower for keyword in keywords):
+                            components.append({
+                                "id": comp_type.title(),
+                                "name": dir_name.title(),
+                                "type": comp_type
+                            })
+                            break
+        except Exception as e:
+            self.logger.debug(f"Error scanning components: {e}")
 
         # Default components if none detected
         if not components:
@@ -175,18 +192,21 @@ class DiagramGenerator:
         # Common schema file patterns
         schema_patterns = ["*.sql", "schema.py", "models.py", "*.prisma"]
 
-        for pattern in schema_patterns:
-            for schema_file in self.project_path.rglob(pattern):
-                try:
-                    content = schema_file.read_text()
-                    # Look for CREATE TABLE or model definitions
-                    table_matches = re.findall(r'CREATE TABLE (\w+)|class (\w+)\(.*Model\)', content, re.IGNORECASE)
-                    for match in table_matches:
-                        table_name = match[0] or match[1]
-                        if table_name and table_name.lower() not in ['model', 'base']:
-                            tables.append(table_name.lower())
-                except Exception:
-                    continue
+        try:
+            for pattern in schema_patterns:
+                for schema_file in self.project_path.rglob(pattern):
+                    try:
+                        content = schema_file.read_text()
+                        # Look for CREATE TABLE or model definitions
+                        table_matches = re.findall(r'CREATE TABLE (\w+)|class (\w+)\(.*Model\)', content, re.IGNORECASE)
+                        for match in table_matches:
+                            table_name = match[0] or match[1]
+                            if table_name and table_name.lower() not in ['model', 'base']:
+                                tables.append(table_name.lower())
+                    except Exception:
+                        continue
+        except Exception as e:
+            self.logger.debug(f"Error detecting tables: {e}")
 
         # Default tables if none detected
         if not tables:
@@ -196,9 +216,9 @@ class DiagramGenerator:
 
 
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) < 2:
-        print("Usage: python3 generate_diagrams.py <project_path>")
+        logger = Logger()
+        logger.error("Usage: python3 generate_diagrams.py <project_path>")
         sys.exit(1)
 
     generator = DiagramGenerator(sys.argv[1])

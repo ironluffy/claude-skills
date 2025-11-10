@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """
 Security Analyzer - Detect security vulnerabilities and gaps
+Part of system-design-reviewer skill for Claude Skills
+
+Refactored to use BaseAnalyzer and shared utilities.
 """
 
-import os
 import re
 from pathlib import Path
 
+from analyzer_base import BaseAnalyzer
+from constants import (
+    SECRET_PATTERNS,
+    SECURITY_INDICATORS,
+    CODE_EXTENSIONS
+)
 
-class SecurityAnalyzer:
+
+class SecurityAnalyzer(BaseAnalyzer):
     """Analyze security vulnerabilities and best practices"""
-
-    def __init__(self, project_path):
-        self.project_path = Path(project_path)
 
     def analyze(self):
         """Run security analysis"""
+        self._log_analysis_start("Security")
+
         results = {
             "critical_count": 0,
             "high_count": 0,
@@ -38,6 +46,8 @@ class SecurityAnalyzer:
         results["critical_count"] = len(critical)
         results["high_count"] = len(high)
         results["medium_count"] = len(medium)
+
+        self._log_analysis_complete(results)
 
         return results
 
@@ -68,49 +78,54 @@ class SecurityAnalyzer:
         # Check for hardcoded secrets
         secrets = self._find_hardcoded_secrets()
         for secret in secrets:
-            critical_issues.append({
-                "title": f"Hardcoded {secret['type']} in source code",
-                "file": secret["file"],
-                "risk": f"{secret['type'].title()} exposure in version control",
-                "fix": "Move to environment variables or secret management",
-                "effort": "1 hour"
-            })
+            critical_issues.append(self._create_issue(
+                title=f"Hardcoded {secret['type']} in source code",
+                impact=f"{secret['type'].title()} exposure in version control",
+                recommendation="Move to environment variables or secret management",
+                effort="1 hour",
+                file=secret["file"],
+                risk=f"{secret['type'].title()} exposure in version control"
+            ))
 
         # Check for rate limiting
         if not self._has_rate_limiting():
-            high_issues.append({
-                "title": "No rate limiting on authentication endpoints",
-                "risk": "Brute force attacks possible",
-                "fix": "Add rate limiting (10-100 requests/minute)",
-                "effort": "2 hours"
-            })
+            high_issues.append(self._create_issue(
+                title="No rate limiting on authentication endpoints",
+                impact="Brute force attacks possible",
+                recommendation="Add rate limiting (10-100 requests/minute)",
+                effort="2 hours",
+                risk="Brute force attacks possible"
+            ))
 
         # Check for SQL injection protection
         if not self._has_sql_protection():
-            high_issues.append({
-                "title": "Potential SQL injection vulnerabilities",
-                "risk": "Database compromise through malicious queries",
-                "fix": "Use parameterized queries/ORM everywhere",
-                "effort": "4 hours"
-            })
+            high_issues.append(self._create_issue(
+                title="Potential SQL injection vulnerabilities",
+                impact="Database compromise through malicious queries",
+                recommendation="Use parameterized queries/ORM everywhere",
+                effort="4 hours",
+                risk="Database compromise through malicious queries"
+            ))
 
         # Check for security headers
         if not self._has_security_headers():
-            medium_issues.append({
-                "title": "Missing security headers",
-                "risk": "XSS, clickjacking vulnerabilities",
-                "fix": "Add CSP, X-Frame-Options, HSTS headers",
-                "effort": "1 hour"
-            })
+            medium_issues.append(self._create_issue(
+                title="Missing security headers",
+                impact="XSS, clickjacking vulnerabilities",
+                recommendation="Add CSP, X-Frame-Options, HSTS headers",
+                effort="1 hour",
+                risk="XSS, clickjacking vulnerabilities"
+            ))
 
         # Check for CSRF protection
         if not self._has_csrf_protection():
-            medium_issues.append({
-                "title": "No CSRF protection detected",
-                "risk": "Cross-site request forgery attacks",
-                "fix": "Implement CSRF tokens for state-changing operations",
-                "effort": "2 hours"
-            })
+            medium_issues.append(self._create_issue(
+                title="No CSRF protection detected",
+                impact="Cross-site request forgery attacks",
+                recommendation="Implement CSRF tokens for state-changing operations",
+                effort="2 hours",
+                risk="Cross-site request forgery attacks"
+            ))
 
         return critical_issues, high_issues, medium_issues
 
@@ -118,40 +133,27 @@ class SecurityAnalyzer:
         """Find hardcoded secrets in source code"""
         secrets = []
 
-        # Secret patterns
-        patterns = {
-            "api_key": r'(?i)(api[_-]?key|apikey)\s*=\s*[\'"]([a-zA-Z0-9]{20,})[\'"]',
-            "password": r'(?i)(password|passwd|pwd)\s*=\s*[\'"](?!{{)[^\'"]{8,}[\'"]',
-            "token": r'(?i)(token|auth[_-]?token)\s*=\s*[\'"]([a-zA-Z0-9]{20,})[\'"]',
-            "secret": r'(?i)(secret|secret[_-]?key)\s*=\s*[\'"]([a-zA-Z0-9]{20,})[\'"]'
-        }
-
         # Scan code files
-        code_extensions = ['.py', '.js', '.java', '.rb', '.php', '.go', '.ts', '.jsx', '.tsx']
+        code_files = self._get_code_files(CODE_EXTENSIONS)
 
-        for code_file in self.project_path.rglob("*"):
-            if code_file.suffix in code_extensions:
-                # Skip test files and examples
-                if 'test' in code_file.name.lower() or 'example' in code_file.name.lower():
-                    continue
+        for code_file in code_files:
+            content = self._read_file_safe(code_file)
+            if not content:
+                continue
 
-                try:
-                    content = code_file.read_text()
-                    for secret_type, pattern in patterns.items():
-                        matches = re.findall(pattern, content)
-                        if matches:
-                            # Check if it looks like a real secret (not placeholder)
-                            for match in matches:
-                                value = match[1] if isinstance(match, tuple) else match
-                                if self._looks_like_real_secret(value):
-                                    secrets.append({
-                                        "type": secret_type,
-                                        "file": str(code_file.relative_to(self.project_path)),
-                                        "value_preview": value[:10] + "..."
-                                    })
-                                    break  # One finding per file is enough
-                except Exception:
-                    continue
+            for secret_type, pattern in SECRET_PATTERNS.items():
+                matches = re.findall(pattern, content)
+                if matches:
+                    # Check if it looks like a real secret (not placeholder)
+                    for match in matches:
+                        value = match[1] if isinstance(match, tuple) else match
+                        if self._looks_like_real_secret(value):
+                            secrets.append({
+                                "type": secret_type,
+                                "file": str(code_file.relative_to(self.project_path)),
+                                "value_preview": value[:10] + "..."
+                            })
+                            break  # One finding per file is enough
 
         return secrets
 
@@ -173,53 +175,19 @@ class SecurityAnalyzer:
 
     def _uses_https(self):
         """Check if HTTPS is used"""
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.conf', '.yml', '.yaml']:
-                try:
-                    content = file.read_text()
-                    if re.search(r'https://', content, re.IGNORECASE):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['https'])
 
     def _uses_password_hashing(self):
         """Check for secure password hashing"""
-        hash_libs = ['bcrypt', 'argon2', 'scrypt', 'pbkdf2']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.go']:
-                try:
-                    content = file.read_text().lower()
-                    if any(lib in content for lib in hash_libs):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['password_hashing'])
 
     def _has_input_validation(self):
         """Check for input validation"""
-        validation_patterns = ['validate', 'sanitize', 'validator', 'schema', 'joi', 'yup']
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.go']:
-                try:
-                    content = file.read_text().lower()
-                    if any(pattern in content for pattern in validation_patterns):
-                        return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['input_validation'])
 
     def _has_rate_limiting(self):
         """Check for rate limiting"""
-        rate_limit_patterns = ['rate.limit', 'ratelimit', 'throttle', 'rate_limit']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(pattern in content for pattern in rate_limit_patterns):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['rate_limiting'])
 
     def _has_sql_protection(self):
         """Check for SQL injection protection"""
@@ -227,41 +195,26 @@ class SecurityAnalyzer:
         orm_patterns = ['sqlalchemy', 'sequelize', 'hibernate', 'activerecord', 'prisma', 'typeorm']
         param_patterns = [r'\?', r':\w+', r'\$\d+', 'prepared.statement']
 
-        for file in self.project_path.rglob("*"):
-            if file.suffix in ['.py', '.js', '.java', '.go']:
-                try:
-                    content = file.read_text().lower()
-                    if any(orm in content for orm in orm_patterns):
-                        return True
-                    if any(re.search(pattern, content) for pattern in param_patterns):
-                        return True
-                except Exception:
-                    continue
+        code_files = self._get_code_files()
+
+        for file_path in code_files:
+            content = self._read_file_safe(file_path)
+            if content:
+                content_lower = content.lower()
+                if any(orm in content_lower for orm in orm_patterns):
+                    return True
+                if any(re.search(pattern, content) for pattern in param_patterns):
+                    return True
+
         return False
 
     def _has_security_headers(self):
         """Check for security headers"""
-        header_patterns = ['x-frame-options', 'content-security-policy', 'csp', 'hsts', 'strict-transport-security']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(header in content for header in header_patterns):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['security_headers'])
 
     def _has_csrf_protection(self):
         """Check for CSRF protection"""
-        csrf_patterns = ['csrf', 'xsrf', 'cross.site.request']
-        for file in self.project_path.rglob("*"):
-            try:
-                content = file.read_text().lower()
-                if any(pattern.replace('.', r'[\s_-]?') in content for pattern in csrf_patterns):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(SECURITY_INDICATORS['csrf'])
 
 
 if __name__ == "__main__":

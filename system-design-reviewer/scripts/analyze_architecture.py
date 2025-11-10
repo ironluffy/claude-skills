@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
 """
 Architecture Analyzer - Check architecture best practices
+Part of system-design-reviewer skill for Claude Skills
+
+Refactored to use BaseAnalyzer and shared utilities.
 """
 
-import os
 import re
 from pathlib import Path
 
+from analyzer_base import BaseAnalyzer
+from constants import (
+    ARCHITECTURE_INDICATORS,
+    MVC_DIRECTORIES,
+    CODE_EXTENSIONS,
+    CONFIG_EXTENSIONS
+)
 
-class ArchitectureAnalyzer:
+
+class ArchitectureAnalyzer(BaseAnalyzer):
     """Analyze architecture patterns and best practices"""
-
-    def __init__(self, project_path):
-        self.project_path = Path(project_path)
 
     def analyze(self):
         """Run architecture analysis"""
+        self._log_analysis_start("Architecture")
+
         results = {
             "issue_count": 0,
             "recommendation_count": 0,
@@ -37,6 +46,8 @@ class ArchitectureAnalyzer:
         results["issue_count"] = len(high) + len(medium) + len(low)
         results["recommendation_count"] = results["issue_count"]
 
+        self._log_analysis_complete(results)
+
         return results
 
     def _find_strengths(self):
@@ -44,25 +55,20 @@ class ArchitectureAnalyzer:
         strengths = []
 
         # Check for separation of concerns
-        has_dirs = {
-            "controllers": any(self.project_path.rglob("*controller*")),
-            "models": any(self.project_path.rglob("*model*")),
-            "services": any(self.project_path.rglob("*service*")),
-            "tests": any(self.project_path.rglob("test*"))
-        }
+        has_dirs = self._check_directory_exists(MVC_DIRECTORIES)
 
-        if has_dirs["controllers"] and has_dirs["models"]:
+        if has_dirs.get("controllers") and has_dirs.get("models"):
             strengths.append("Well-separated components (MVC pattern)")
 
-        if has_dirs["tests"]:
+        if has_dirs.get("tests"):
             strengths.append("Test infrastructure in place")
 
         # Check for configuration management
-        if any(self.project_path.rglob("*.env.example")):
+        if self._find_files_by_pattern("*.env.example"):
             strengths.append("Environment configuration template provided")
 
         # Check for Docker
-        if any(self.project_path.rglob("Dockerfile")):
+        if self._find_files_by_pattern("Dockerfile"):
             strengths.append("Containerized application (Docker)")
 
         return strengths or ["Project structure is organized"]
@@ -75,90 +81,77 @@ class ArchitectureAnalyzer:
 
         # Check for single database instance
         if not self._has_db_replication():
-            high_issues.append({
-                "title": "No database replication detected",
-                "impact": "Single point of failure for data storage",
-                "recommendation": "Implement database replication (primary + replicas)",
-                "effort": "4 hours",
-                "cost_impact": "+$50/month"
-            })
+            high_issues.append(self._create_issue(
+                title="No database replication detected",
+                impact="Single point of failure for data storage",
+                recommendation="Implement database replication (primary + replicas)",
+                effort="4 hours",
+                cost_impact="+$50/month"
+            ))
 
         # Check for caching
         if not self._has_caching():
-            medium_issues.append({
-                "title": "No caching layer detected",
-                "impact": "High database load, slower response times",
-                "recommendation": "Add Redis or Memcached caching",
-                "effort": "6 hours",
-                "cost_impact": "+$30/month"
-            })
+            medium_issues.append(self._create_issue(
+                title="No caching layer detected",
+                impact="High database load, slower response times",
+                recommendation="Add Redis or Memcached caching",
+                effort="6 hours",
+                cost_impact="+$30/month"
+            ))
 
         # Check for load balancing
         if not self._has_load_balancer():
-            medium_issues.append({
-                "title": "No load balancer configuration",
-                "impact": "Cannot horizontally scale",
-                "recommendation": "Add load balancer (nginx/HAProxy/ALB)",
-                "effort": "3 hours",
-                "cost_impact": "+$20/month"
-            })
+            medium_issues.append(self._create_issue(
+                title="No load balancer configuration",
+                impact="Cannot horizontally scale",
+                recommendation="Add load balancer (nginx/HAProxy/ALB)",
+                effort="3 hours",
+                cost_impact="+$20/month"
+            ))
 
         # Check for health checks
         if not self._has_health_checks():
-            low_issues.append({
-                "title": "No health check endpoints",
-                "impact": "Difficult to monitor service status",
-                "recommendation": "Add /health and /ready endpoints",
-                "effort": "1 hour",
-                "cost_impact": "None"
-            })
+            low_issues.append(self._create_issue(
+                title="No health check endpoints",
+                impact="Difficult to monitor service status",
+                recommendation="Add /health and /ready endpoints",
+                effort="1 hour",
+                cost_impact="None"
+            ))
 
         return high_issues, medium_issues, low_issues
 
     def _has_db_replication(self):
         """Check for database replication config"""
-        patterns = ["replica", "replication", "read_replica", "slave"]
-        for config_file in self.project_path.rglob("*.{yml,yaml,json,conf}"):
-            try:
-                content = config_file.read_text().lower()
-                if any(pattern in content for pattern in patterns):
-                    return True
-            except Exception:
-                continue
-        return False
+        return self._contains_technology(
+            ARCHITECTURE_INDICATORS['database_replication'],
+            CONFIG_EXTENSIONS
+        )
 
     def _has_caching(self):
         """Check for caching implementation"""
-        cache_indicators = ["redis", "memcache", "cache"]
-        for file in self.project_path.rglob("*"):
-            if file.is_file():
-                try:
-                    if any(indicator in file.name.lower() for indicator in cache_indicators):
-                        return True
-                    if file.suffix in ['.py', '.js', '.java', '.go']:
-                        content = file.read_text().lower()
-                        if any(f"import {indicator}" in content or f"require('{indicator}" in content
-                               for indicator in cache_indicators):
-                            return True
-                except Exception:
-                    continue
-        return False
+        return self._contains_technology(
+            ARCHITECTURE_INDICATORS['caching'],
+            CODE_EXTENSIONS + CONFIG_EXTENSIONS
+        )
 
     def _has_load_balancer(self):
         """Check for load balancer config"""
-        lb_files = ["nginx.conf", "haproxy.cfg", "load-balancer.yml"]
-        return any(self.project_path.rglob(pattern) for pattern in lb_files)
+        lb_files = ARCHITECTURE_INDICATORS['load_balancer']
+        for pattern in lb_files:
+            if self._find_files_by_pattern(pattern):
+                return True
+        return False
 
     def _has_health_checks(self):
         """Check for health check endpoints"""
-        for code_file in self.project_path.rglob("*"):
-            if code_file.suffix in ['.py', '.js', '.java', '.go', '.rb']:
-                try:
-                    content = code_file.read_text()
-                    if re.search(r'[\'"/]health[\'":]|[\'"/]ready[\'":]', content, re.IGNORECASE):
-                        return True
-                except Exception:
-                    continue
+        code_files = self._get_code_files()
+
+        for code_file in code_files:
+            content = self._read_file_safe(code_file)
+            if content and re.search(r'[\'"/]health[\'":]|[\'"/]ready[\'":]', content, re.IGNORECASE):
+                return True
+
         return False
 
 
