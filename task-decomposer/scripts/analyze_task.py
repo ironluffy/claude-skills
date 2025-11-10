@@ -4,6 +4,8 @@ Task Decomposition Analyzer
 
 Decompose high-level tasks into actionable, testifiable subtasks with comprehensive analysis.
 
+Refactored to use professional logging and centralized constants.
+
 Usage:
     python analyze_task.py "<task description>" [options]
 
@@ -27,12 +29,26 @@ Options:
     --format FORMAT         Output format (markdown, json, yaml)
 """
 
+import os
 import sys
 import json
 import argparse
+from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
+
+# Import constants
+from constants import (
+    AGENT_KEYWORDS,
+    HUMAN_KEYWORDS,
+    REVIEW_KEYWORDS,
+    LINEAR_PRIORITY,
+)
 
 
 class Priority(Enum):
@@ -427,7 +443,7 @@ def analyze_task(task: str, project: str = None, complexity: str = "medium") -> 
     return decomposition
 
 
-def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None, agent_user_id: str = "agent", human_user_ids: Dict[str, str] = None, dry_run: bool = True):
+def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str = None, agent_user_id: str = "agent", human_user_ids: Dict[str, str] = None, dry_run: bool = True, logger: Logger = None):
     """
     Export decomposition to Linear with intelligent assignment.
 
@@ -438,23 +454,26 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
         agent_user_id: User ID to use for agent-assigned tasks (default: "agent")
         human_user_ids: Dict mapping role to Linear user ID for human assignments
         dry_run: If True, show what would be created without actually creating (default: True)
+        logger: Logger instance
     """
-    print(f"\n📤 Exporting to Linear team: {team_id}")
+    logger = logger or Logger()
+
+    logger.info(f"\n📤 Exporting to Linear team: {team_id}")
     if parent_id:
-        print(f"   Parent issue: {parent_id}")
+        logger.info(f"   Parent issue: {parent_id}")
 
     human_user_ids = human_user_ids or {}
 
-    print("\nTask Assignment Summary:")
+    logger.info("\nTask Assignment Summary:")
     agent_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.AGENT and not st.requires_human_review]
     agent_review_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.AGENT and st.requires_human_review]
     human_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.HUMAN]
     either_tasks = [st for st in decomposition.subtasks if st.assignee_type == AssigneeType.EITHER]
 
-    print(f"  🤖 Agent-assigned tasks: {len(agent_tasks)}")
-    print(f"  🤖⚠️  Agent tasks requiring human review: {len(agent_review_tasks)}")
-    print(f"  👤 Human-assigned tasks: {len(human_tasks)}")
-    print(f"  🔄 Either agent or human: {len(either_tasks)}")
+    logger.info(f"  🤖 Agent-assigned tasks: {len(agent_tasks)}")
+    logger.info(f"  🤖⚠️  Agent tasks requiring human review: {len(agent_review_tasks)}")
+    logger.info(f"  👤 Human-assigned tasks: {len(human_tasks)}")
+    logger.info(f"  🔄 Either agent or human: {len(either_tasks)}")
 
     # Try to use real Linear API if available
     use_real_api = not dry_run and os.getenv("LINEAR_API_KEY")
@@ -464,11 +483,11 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
             # Import Linear integration
             from linear_integration import LinearClient, LinearIssue
 
-            client = LinearClient()
-            print("\n✓ Connected to Linear API")
+            client = LinearClient(logger=logger)
+            logger.success("\nConnected to Linear API")
 
             # Create issues
-            print("\n📝 Creating Linear issues with assignments:")
+            logger.info("\n📝 Creating Linear issues with assignments:")
             created_issues = []
 
             for st in decomposition.subtasks:
@@ -533,23 +552,23 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
 
                 icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
                 review_mark = " ⚠️" if st.requires_human_review else ""
-                print(f"  {icon} {issue['identifier']}: {st.title}{review_mark}")
-                print(f"      URL: {issue['url']}")
+                logger.info(f"  {icon} {issue['identifier']}: {st.title}{review_mark}")
+                logger.info(f"      URL: {issue['url']}")
 
-            print(f"\n✓ Created {len(created_issues)} Linear issues")
+            logger.success(f"\nCreated {len(created_issues)} Linear issues")
 
         except ImportError:
-            print("\n⚠️  Linear integration module not found. Install with:")
-            print("   pip install requests")
+            logger.warning("\nLinear integration module not found. Install with:")
+            logger.info("   pip install requests")
             use_real_api = False
         except Exception as e:
-            print(f"\n⚠️  Failed to create Linear issues: {e}")
-            print("   Falling back to preview mode...")
+            logger.warning(f"\nFailed to create Linear issues: {e}")
+            logger.info("   Falling back to preview mode...")
             use_real_api = False
 
     if not use_real_api:
         # Preview mode
-        print("\n[DRY RUN] Would create Linear issues with assignments:")
+        logger.info("\n[DRY RUN] Would create Linear issues with assignments:")
         for st in decomposition.subtasks:
             # Determine assignee
             if st.assignee:
@@ -570,41 +589,45 @@ def export_to_linear(decomposition: Decomposition, team_id: str, parent_id: str 
 
             icon = "🤖" if st.assignee_type == AssigneeType.AGENT else "👤" if st.assignee_type == AssigneeType.HUMAN else "🔄"
             review_mark = " ⚠️ [NEEDS REVIEW]" if st.requires_human_review else ""
-            print(f"  {icon} #{st.id}: {st.title}")
-            print(f"      Assignee: {assignee}{review_mark}")
-            print(f"      Estimate: {st.estimate_hours}h | Priority: {st.priority.name}")
+            logger.info(f"  {icon} #{st.id}: {st.title}")
+            logger.info(f"      Assignee: {assignee}{review_mark}")
+            logger.info(f"      Estimate: {st.estimate_hours}h | Priority: {st.priority.name}")
             if st.dependencies:
-                print(f"      Depends on: #{', #'.join(map(str, st.dependencies))}")
+                logger.info(f"      Depends on: #{', #'.join(map(str, st.dependencies))}")
 
-        print("\n💡 Assignment Rules Applied:")
-        print("  • Agent tasks: Fully automated work (code, tests, refactoring)")
-        print("  • Human tasks: Decisions, approvals, stakeholder work")
-        print("  • Review required: Security, payments, critical systems")
+        logger.info("\n💡 Assignment Rules Applied:")
+        logger.info("  • Agent tasks: Fully automated work (code, tests, refactoring)")
+        logger.info("  • Human tasks: Decisions, approvals, stakeholder work")
+        logger.info("  • Review required: Security, payments, critical systems")
 
         if dry_run:
-            print("\n⚠️  This was a DRY RUN. To create real issues:")
-            print("   1. Set LINEAR_API_KEY environment variable")
-            print("   2. Run without --dry-run flag (or use --create-linear)")
+            logger.warning("\nThis was a DRY RUN. To create real issues:")
+            logger.info("   1. Set LINEAR_API_KEY environment variable")
+            logger.info("   2. Run without --dry-run flag (or use --create-linear)")
         else:
-            print("\n⚠️  Linear API key not found. Set with:")
-            print("   export LINEAR_API_KEY=your_key_here")
-            print("   Or use Linear MCP: claude mcp add linear npx @linear/mcp")
+            logger.warning("\nLinear API key not found. Set with:")
+            logger.info("   export LINEAR_API_KEY=your_key_here")
+            logger.info("   Or use Linear MCP: claude mcp add linear npx @linear/mcp")
 
 
-def export_to_github(decomposition: Decomposition, repo: str):
+def export_to_github(decomposition: Decomposition, repo: str, logger: Logger = None):
     """Export decomposition to GitHub (placeholder)."""
-    print(f"\n📤 Exporting to GitHub repo: {repo}")
+    logger = logger or Logger()
 
-    print("\nThis would create GitHub issues via API:")
+    logger.info(f"\n📤 Exporting to GitHub repo: {repo}")
+
+    logger.info("\nThis would create GitHub issues via API:")
     for st in decomposition.subtasks:
-        print(f"  - {st.title} ({', '.join(st.labels)})")
+        logger.info(f"  - {st.title} ({', '.join(st.labels)})")
 
-    print("\n⚠️  GitHub API integration not implemented in this template.")
-    print("   Implement using PyGithub library.")
+    logger.warning("\nGitHub API integration not implemented in this template.")
+    logger.info("   Implement using PyGithub library.")
 
 
-def generate_dependency_graph(decomposition: Decomposition, output_file: str):
+def generate_dependency_graph(decomposition: Decomposition, output_file: str, logger: Logger = None):
     """Generate DOT format dependency graph."""
+    logger = logger or Logger()
+
     lines = ["digraph dependencies {"]
     lines.append('  rankdir=TB;')
     lines.append('  node [shape=box, style=rounded];')
@@ -623,12 +646,14 @@ def generate_dependency_graph(decomposition: Decomposition, output_file: str):
     with open(output_file, 'w') as f:
         f.write('\n'.join(lines))
 
-    print(f"\n✓ Dependency graph saved to: {output_file}")
-    print(f"  Generate PNG: dot -Tpng {output_file} -o dependencies.png")
+    logger.success(f"\nDependency graph saved to: {output_file}")
+    logger.info(f"  Generate PNG: dot -Tpng {output_file} -o dependencies.png")
 
 
 def main():
     """Main entry point."""
+    logger = Logger()
+
     parser = argparse.ArgumentParser(description="Decompose tasks into actionable subtasks with intelligent agent/human assignment")
     parser.add_argument("task", help="Task description to decompose")
     parser.add_argument("--project", help="Project context")
@@ -649,7 +674,7 @@ def main():
     args = parser.parse_args()
 
     # Analyze task
-    print(f"Analyzing task: {args.task}\n")
+    logger.info(f"Analyzing task: {args.task}\n")
     decomposition = analyze_task(args.task, args.project, args.complexity)
 
     # Generate output
@@ -665,18 +690,18 @@ def main():
     if args.output:
         with open(args.output, 'w') as f:
             f.write(output)
-        print(f"✓ Decomposition saved to: {args.output}")
+        logger.success(f"Decomposition saved to: {args.output}")
     else:
         print(output)
 
     # Generate graph
     if args.graph:
-        generate_dependency_graph(decomposition, args.graph)
+        generate_dependency_graph(decomposition, args.graph, logger=logger)
 
     # Export to Linear
     if args.export_linear:
         if not args.team_id:
-            print("Error: --team-id required for Linear export")
+            logger.error("--team-id required for Linear export")
             sys.exit(1)
 
         # Parse human users mapping
@@ -690,14 +715,14 @@ def main():
         # Determine if we should actually create issues
         dry_run = not args.create_linear
 
-        export_to_linear(decomposition, args.team_id, args.parent_id, args.agent_user, human_users, dry_run)
+        export_to_linear(decomposition, args.team_id, args.parent_id, args.agent_user, human_users, dry_run, logger=logger)
 
     # Export to GitHub
     if args.export_github:
         if not args.repo:
-            print("Error: --repo required for GitHub export")
+            logger.error("--repo required for GitHub export")
             sys.exit(1)
-        export_to_github(decomposition, args.repo)
+        export_to_github(decomposition, args.repo, logger=logger)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ Linear API Integration
 
 Real Linear API integration using Linear MCP server or direct API calls.
 
+Refactored to use professional logging and centralized GraphQL queries.
+
 Requirements:
     - Linear API key: export LINEAR_API_KEY=lin_api_xxx
     - Linear MCP: claude mcp add linear npx @linear/mcp
@@ -25,8 +27,21 @@ import os
 import sys
 import json
 import requests
+from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
+
+# Import constants
+from constants import (
+    LINEAR_API_URL,
+    LINEAR_API_TIMEOUT,
+    LINEAR_QUERIES,
+    LINEAR_MUTATIONS,
+)
 
 
 @dataclass
@@ -51,16 +66,17 @@ class LinearIssue:
 class LinearClient:
     """Linear API client for creating and managing issues."""
 
-    API_URL = "https://api.linear.app/graphql"
-
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, logger: Logger = None):
         """
         Initialize Linear client.
 
         Args:
             api_key: Linear API key. If not provided, reads from LINEAR_API_KEY env var.
+            logger: Logger instance. If not provided, creates new one.
         """
         self.api_key = api_key or os.getenv("LINEAR_API_KEY")
+        self.logger = logger or Logger()
+
         if not self.api_key:
             raise ValueError(
                 "Linear API key required. Set LINEAR_API_KEY env var or pass api_key parameter.\n"
@@ -81,10 +97,10 @@ class LinearClient:
 
         try:
             response = requests.post(
-                self.API_URL,
+                LINEAR_API_URL,
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=LINEAR_API_TIMEOUT / 1000  # Convert ms to seconds
             )
             response.raise_for_status()
             result = response.json()
@@ -100,53 +116,17 @@ class LinearClient:
 
     def get_teams(self) -> List[Dict]:
         """Get all teams."""
-        query = """
-        query {
-            teams {
-                nodes {
-                    id
-                    name
-                    key
-                }
-            }
-        }
-        """
-        result = self._execute_query(query)
+        result = self._execute_query(LINEAR_QUERIES['get_teams'])
         return result.get("teams", {}).get("nodes", [])
 
     def get_users(self, team_id: str = None) -> List[Dict]:
         """Get users, optionally filtered by team."""
-        query = """
-        query($teamId: String) {
-            users {
-                nodes {
-                    id
-                    name
-                    email
-                    displayName
-                }
-            }
-        }
-        """
-        result = self._execute_query(query, {"teamId": team_id})
+        result = self._execute_query(LINEAR_QUERIES['get_users'], {"teamId": team_id})
         return result.get("users", {}).get("nodes", [])
 
     def get_workflow_states(self, team_id: str) -> List[Dict]:
         """Get workflow states for a team."""
-        query = """
-        query($teamId: String!) {
-            team(id: $teamId) {
-                states {
-                    nodes {
-                        id
-                        name
-                        type
-                    }
-                }
-            }
-        }
-        """
-        result = self._execute_query(query, {"teamId": team_id})
+        result = self._execute_query(LINEAR_QUERIES['get_workflow_states'], {"teamId": team_id})
         return result.get("team", {}).get("states", {}).get("nodes", [])
 
     def create_issue(
@@ -178,24 +158,6 @@ class LinearClient:
         Returns:
             Created issue data including ID and URL
         """
-        mutation = """
-        mutation CreateIssue($input: IssueCreateInput!) {
-            issueCreate(input: $input) {
-                success
-                issue {
-                    id
-                    identifier
-                    title
-                    url
-                    assignee {
-                        id
-                        name
-                    }
-                }
-            }
-        }
-        """
-
         issue_input = {
             "teamId": team_id,
             "title": title,
@@ -217,7 +179,7 @@ class LinearClient:
 
         variables = {"input": issue_input}
 
-        result = self._execute_query(mutation, variables)
+        result = self._execute_query(LINEAR_MUTATIONS['create_issue'], variables)
 
         if not result.get("issueCreate", {}).get("success"):
             raise Exception("Failed to create Linear issue")
@@ -250,10 +212,10 @@ class LinearClient:
                     state_id=issue.state_id
                 )
                 created_issues.append(result)
-                print(f"✓ Created: {result['identifier']} - {result['title']}")
+                self.logger.success(f"Created: {result['identifier']} - {result['title']}")
 
             except Exception as e:
-                print(f"✗ Failed to create '{issue.title}': {e}", file=sys.stderr)
+                self.logger.error(f"Failed to create '{issue.title}': {e}")
                 continue
 
         return created_issues
@@ -269,26 +231,12 @@ class LinearClient:
         Returns:
             Updated issue data
         """
-        mutation = """
-        mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
-            issueUpdate(id: $id, input: $input) {
-                success
-                issue {
-                    id
-                    identifier
-                    title
-                    url
-                }
-            }
-        }
-        """
-
         variables = {
             "id": issue_id,
             "input": updates
         }
 
-        result = self._execute_query(mutation, variables)
+        result = self._execute_query(LINEAR_MUTATIONS['update_issue'], variables)
 
         if not result.get("issueUpdate", {}).get("success"):
             raise Exception(f"Failed to update issue {issue_id}")
@@ -297,34 +245,7 @@ class LinearClient:
 
     def get_issue(self, issue_id: str) -> Dict:
         """Get issue by ID."""
-        query = """
-        query($id: String!) {
-            issue(id: $id) {
-                id
-                identifier
-                title
-                description
-                priority
-                estimate
-                state {
-                    id
-                    name
-                }
-                assignee {
-                    id
-                    name
-                    email
-                }
-                labels {
-                    nodes {
-                        id
-                        name
-                    }
-                }
-            }
-        }
-        """
-        result = self._execute_query(query, {"id": issue_id})
+        result = self._execute_query(LINEAR_QUERIES['get_issue'], {"id": issue_id})
         return result.get("issue", {})
 
     def find_user_by_email(self, email: str) -> Optional[Dict]:
@@ -346,18 +267,19 @@ class LinearClient:
 
 def example_usage():
     """Example usage of Linear integration."""
+    logger = Logger()
 
     # Initialize client (requires LINEAR_API_KEY env var)
-    client = LinearClient()
+    client = LinearClient(logger=logger)
 
     # Get teams
-    print("📋 Available teams:")
+    logger.info("📋 Available teams:")
     teams = client.get_teams()
     for team in teams[:5]:  # Show first 5
-        print(f"  - {team['key']}: {team['name']} (ID: {team['id']})")
+        logger.info(f"  - {team['key']}: {team['name']} (ID: {team['id']})")
 
     if not teams:
-        print("No teams found!")
+        logger.warning("No teams found!")
         return
 
     # Use first team for example
@@ -365,13 +287,13 @@ def example_usage():
     team_key = teams[0]['key']
 
     # Get users
-    print(f"\n👥 Users in team {team_key}:")
+    logger.info(f"\n👥 Users in team {team_key}:")
     users = client.get_users(team_id)
     for user in users[:5]:  # Show first 5
-        print(f"  - {user['displayName']} ({user['email']}) - ID: {user['id']}")
+        logger.info(f"  - {user['displayName']} ({user['email']}) - ID: {user['id']}")
 
     # Create example issue
-    print(f"\n🎯 Creating test issue in team {team_key}...")
+    logger.info(f"\n🎯 Creating test issue in team {team_key}...")
 
     issue = client.create_issue(
         team_id=team_id,
@@ -391,16 +313,17 @@ Created via Claude Skills repository.
         priority=3  # Medium
     )
 
-    print(f"✓ Created: {issue['identifier']}")
-    print(f"  Title: {issue['title']}")
-    print(f"  URL: {issue['url']}")
+    logger.success(f"Created: {issue['identifier']}")
+    logger.info(f"  Title: {issue['title']}")
+    logger.info(f"  URL: {issue['url']}")
     if issue.get('assignee'):
-        print(f"  Assigned to: {issue['assignee']['name']}")
+        logger.info(f"  Assigned to: {issue['assignee']['name']}")
 
 
 if __name__ == "__main__":
+    logger = Logger()
     try:
         example_usage()
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         sys.exit(1)

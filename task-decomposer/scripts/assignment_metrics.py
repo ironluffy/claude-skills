@@ -4,6 +4,8 @@ Assignment Metrics and Analytics
 
 Track and analyze the effectiveness of agent/human assignments.
 
+Refactored to use professional logging.
+
 Usage:
     python assignment_metrics.py --analyze decomposition.json
     python assignment_metrics.py --track-completion task-123 --status completed --time 2.5
@@ -14,10 +16,18 @@ import os
 import sys
 import json
 import argparse
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 from collections import defaultdict
+
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
+
+# Import constants
+from constants import DEFAULT_METRICS_FILE
 
 
 @dataclass
@@ -37,9 +47,10 @@ class TaskCompletion:
 class AssignmentMetrics:
     """Track and analyze assignment metrics."""
 
-    def __init__(self, data_file: str = "assignment_metrics.json"):
+    def __init__(self, data_file: str = None, logger: Logger = None):
         """Initialize metrics tracker."""
-        self.data_file = data_file
+        self.data_file = data_file or DEFAULT_METRICS_FILE
+        self.logger = logger or Logger()
         self.completions: List[TaskCompletion] = []
         self.load_data()
 
@@ -53,7 +64,7 @@ class AssignmentMetrics:
                         TaskCompletion(**c) for c in data.get("completions", [])
                     ]
             except Exception as e:
-                print(f"Warning: Could not load metrics data: {e}", file=sys.stderr)
+                self.logger.warning(f"Could not load metrics data: {e}")
 
     def save_data(self):
         """Save metrics data to file."""
@@ -68,7 +79,7 @@ class AssignmentMetrics:
         """Record a task completion."""
         self.completions.append(completion)
         self.save_data()
-        print(f"✓ Recorded completion for {completion.task_id}")
+        self.logger.success(f"Recorded completion for {completion.task_id}")
 
     def get_velocity_by_type(self, days: int = 30) -> Dict[str, Dict]:
         """Calculate velocity metrics by assignee type."""
@@ -158,7 +169,13 @@ class AssignmentMetrics:
         total = agent_count + human_count
 
         if total == 0:
-            return {"agent_pct": 0, "human_pct": 0, "total": 0}
+            return {
+                "agent_count": 0,
+                "human_count": 0,
+                "agent_pct": 0,
+                "human_pct": 0,
+                "total": 0
+            }
 
         return {
             "agent_count": agent_count,
@@ -189,64 +206,59 @@ class AssignmentMetrics:
 
     def generate_report(self, days: int = 30):
         """Generate comprehensive metrics report."""
-        print(f"\n{'='*60}")
-        print(f"ASSIGNMENT METRICS REPORT - Last {days} days")
-        print(f"{'='*60}\n")
+        self.logger.section(f"ASSIGNMENT METRICS REPORT - Last {days} days", '=', 60)
 
         # Velocity metrics
         velocity = self.get_velocity_by_type(days)
 
-        print(f"📊 VELOCITY METRICS")
-        print(f"{'─'*60}")
-        print(f"Total tasks completed: {velocity['total_tasks']}\n")
+        self.logger.info("📊 VELOCITY METRICS")
+        self.logger.info("─" * 60)
+        self.logger.info(f"Total tasks completed: {velocity['total_tasks']}\n")
 
-        print(f"🤖 Agent Performance:")
+        self.logger.info("🤖 Agent Performance:")
         agent = velocity['agent']
-        print(f"   Tasks: {agent['count']}")
-        print(f"   Avg actual time: {agent['avg_actual_hours']:.1f}h")
-        print(f"   Avg estimated: {agent['avg_estimated_hours']:.1f}h")
-        print(f"   Estimation accuracy: {agent['estimation_accuracy']:.1f}%")
-        print()
+        self.logger.info(f"   Tasks: {agent['count']}")
+        self.logger.info(f"   Avg actual time: {agent['avg_actual_hours']:.1f}h")
+        self.logger.info(f"   Avg estimated: {agent['avg_estimated_hours']:.1f}h")
+        self.logger.info(f"   Estimation accuracy: {agent['estimation_accuracy']:.1f}%\n")
 
-        print(f"👤 Human Performance:")
+        self.logger.info("👤 Human Performance:")
         human = velocity['human']
-        print(f"   Tasks: {human['count']}")
-        print(f"   Avg actual time: {human['avg_actual_hours']:.1f}h")
-        print(f"   Avg estimated: {human['avg_estimated_hours']:.1f}h")
-        print(f"   Estimation accuracy: {human['estimation_accuracy']:.1f}%")
-        print()
+        self.logger.info(f"   Tasks: {human['count']}")
+        self.logger.info(f"   Avg actual time: {human['avg_actual_hours']:.1f}h")
+        self.logger.info(f"   Avg estimated: {human['avg_estimated_hours']:.1f}h")
+        self.logger.info(f"   Estimation accuracy: {human['estimation_accuracy']:.1f}%\n")
 
         # Assignment distribution
         dist = self.get_assignment_distribution(days)
-        print(f"📈 ASSIGNMENT DISTRIBUTION")
-        print(f"{'─'*60}")
-        print(f"🤖 Agent:  {dist['agent_count']:3d} tasks ({dist['agent_pct']:.1f}%)")
-        print(f"👤 Human:  {dist['human_count']:3d} tasks ({dist['human_pct']:.1f}%)")
-        print()
+        self.logger.info("📈 ASSIGNMENT DISTRIBUTION")
+        self.logger.info("─" * 60)
+        self.logger.info(f"🤖 Agent:  {dist['agent_count']:3d} tasks ({dist['agent_pct']:.1f}%)")
+        self.logger.info(f"👤 Human:  {dist['human_count']:3d} tasks ({dist['human_pct']:.1f}%)\n")
 
         # Review effectiveness
         review = self.get_review_effectiveness(days)
-        print(f"⚠️  REVIEW EFFECTIVENESS")
-        print(f"{'─'*60}")
-        print(f"Tasks reviewed: {review['tasks_reviewed']}")
-        print(f"Avg findings per review: {review['avg_findings']:.1f}")
-        print(f"High-risk caught: {review['high_risk_caught']}")
+        self.logger.info("⚠️  REVIEW EFFECTIVENESS")
+        self.logger.info("─" * 60)
+        self.logger.info(f"Tasks reviewed: {review['tasks_reviewed']}")
+        self.logger.info(f"Avg findings per review: {review['avg_findings']:.1f}")
+        self.logger.info(f"High-risk caught: {review['high_risk_caught']}")
         if review['tasks_reviewed'] > 0:
-            print(f"Catch rate: {review['catch_rate']:.1f}%")
-        print()
+            self.logger.info(f"Catch rate: {review['catch_rate']:.1f}%")
+        self.logger.info("")
 
         # Label analysis
         labels = self.get_label_analysis(days)
         if labels:
-            print(f"🏷️  BY LABEL")
-            print(f"{'─'*60}")
+            self.logger.info("🏷️  BY LABEL")
+            self.logger.info("─" * 60)
             for label, stats in sorted(labels.items(), key=lambda x: x[1]['total_hours'], reverse=True)[:10]:
                 total = stats['agent'] + stats['human']
                 agent_pct = (stats['agent'] / total * 100) if total > 0 else 0
-                print(f"{label:15s}  🤖 {stats['agent']:2d}  👤 {stats['human']:2d}  " +
+                self.logger.info(f"{label:15s}  🤖 {stats['agent']:2d}  👤 {stats['human']:2d}  " +
                       f"({agent_pct:.0f}% agent)  {stats['total_hours']:.1f}h")
 
-        print(f"\n{'='*60}\n")
+        self.logger.info("")
 
     def export_csv(self, output_file: str):
         """Export metrics to CSV for analysis."""
@@ -254,7 +266,7 @@ class AssignmentMetrics:
 
         with open(output_file, 'w', newline='') as f:
             if not self.completions:
-                print("No data to export")
+                self.logger.warning("No data to export")
                 return
 
             fieldnames = list(asdict(self.completions[0]).keys())
@@ -264,15 +276,17 @@ class AssignmentMetrics:
             for completion in self.completions:
                 writer.writerow(asdict(completion))
 
-        print(f"✓ Exported {len(self.completions)} records to {output_file}")
+        self.logger.success(f"Exported {len(self.completions)} records to {output_file}")
 
 
 def main():
     """Main entry point."""
+    logger = Logger()
+
     parser = argparse.ArgumentParser(description="Track and analyze assignment metrics")
 
-    parser.add_argument("--data-file", default="assignment_metrics.json",
-                        help="Metrics data file")
+    parser.add_argument("--data-file", default=None,
+                        help=f"Metrics data file (default: {DEFAULT_METRICS_FILE})")
 
     # Recording
     parser.add_argument("--track-completion", metavar="TASK_ID",
@@ -301,11 +315,11 @@ def main():
 
     args = parser.parse_args()
 
-    metrics = AssignmentMetrics(args.data_file)
+    metrics = AssignmentMetrics(args.data_file, logger=logger)
 
     if args.track_completion:
         if not args.assignee_type or args.estimated is None or args.actual is None:
-            print("Error: --assignee-type, --estimated, and --actual required for tracking")
+            logger.error("--assignee-type, --estimated, and --actual required for tracking")
             sys.exit(1)
 
         completion = TaskCompletion(
@@ -331,12 +345,12 @@ def main():
     else:
         # Show quick summary
         dist = metrics.get_assignment_distribution(args.days)
-        print(f"\n📊 Quick Summary (last {args.days} days):")
-        print(f"   Total tasks: {dist['total']}")
-        print(f"   🤖 Agent: {dist['agent_count']} ({dist['agent_pct']:.1f}%)")
-        print(f"   👤 Human: {dist['human_count']} ({dist['human_pct']:.1f}%)")
-        print(f"\nUse --report for detailed analysis")
-        print(f"Use --track-completion to record task completions\n")
+        logger.info(f"\n📊 Quick Summary (last {args.days} days):")
+        logger.info(f"   Total tasks: {dist['total']}")
+        logger.info(f"   🤖 Agent: {dist['agent_count']} ({dist['agent_pct']:.1f}%)")
+        logger.info(f"   👤 Human: {dist['human_count']} ({dist['human_pct']:.1f}%)")
+        logger.info(f"\nUse --report for detailed analysis")
+        logger.info(f"Use --track-completion to record task completions\n")
 
 
 if __name__ == "__main__":
