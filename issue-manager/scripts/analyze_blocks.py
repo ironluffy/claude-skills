@@ -4,6 +4,8 @@ Block Analysis Script
 
 Analyze blocking issues and suggest unblocking strategies.
 
+Refactored to use professional logging and centralized constants.
+
 Usage:
     python analyze_blocks.py --issue ISSUE-123
     python analyze_blocks.py --issue ISSUE-456 --suggest-split
@@ -17,14 +19,28 @@ Examples:
 
 import sys
 import argparse
+from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
+
+# Import constants
+from constants import (
+    Blocker,
+    DEFAULT_ESCALATION_THRESHOLD_DAYS,
+    SPLIT_STRATEGIES,
+    DEFAULT_SUBTASKS,
+    ICONS
+)
+
 
 @dataclass
 class BlockerInfo:
-    """Information about a blocking issue."""
+    """Information about a blocking issue (extends Blocker with additional fields)."""
     blocker_id: str
     description: str
     category: str
@@ -37,13 +53,15 @@ class BlockerInfo:
 class BlockAnalyzer:
     """Analyze blocking issues and dependencies."""
 
-    def __init__(self):
+    def __init__(self, logger: Logger = None):
+        """Initialize analyzer with optional logger."""
         self.issues_cache = {}
+        self.logger = logger or Logger()
 
     def analyze_issue(self, issue_id: str) -> Dict:
         """Analyze blocking status of an issue."""
 
-        print(f"Analyzing issue: {issue_id}\n")
+        self.logger.info(f"Analyzing issue: {issue_id}\n")
 
         # Example analysis (would use actual API)
         blockers = self._find_blockers(issue_id)
@@ -51,28 +69,28 @@ class BlockAnalyzer:
         critical_path = self._calculate_critical_path(issue_id)
 
         if not blockers:
-            print("✓ No direct blockers found")
+            self.logger.success("No direct blockers found")
         else:
-            print(f"⚠️  Found {len(blockers)} blocker(s):\n")
+            self.logger.warning(f"Found {len(blockers)} blocker(s):\n")
             for blocker in blockers:
                 self._print_blocker(blocker)
 
         if transitive_deps:
-            print(f"\n📊 Transitive dependencies: {len(transitive_deps)}")
+            self.logger.info(f"\n{ICONS['info']} Transitive dependencies: {len(transitive_deps)}")
             for dep in transitive_deps[:3]:  # Show first 3
-                print(f"  → {dep}")
+                self.logger.info(f"  → {dep}")
 
         if critical_path:
-            print(f"\n🎯 Critical path items:")
+            self.logger.info(f"\n{ICONS['critical_path']} Critical path items:")
             for item in critical_path:
-                print(f"  → {item}")
+                self.logger.info(f"  → {item}")
 
         # Suggest unblocking strategies
         if blockers:
-            print(f"\n💡 Suggested unblocking strategies:")
+            self.logger.info(f"\n{ICONS['suggestion']} Suggested unblocking strategies:")
             for blocker in blockers:
                 if blocker.suggested_action:
-                    print(f"  • {blocker.suggested_action}")
+                    self.logger.info(f"  • {blocker.suggested_action}")
 
         return {
             "issue_id": issue_id,
@@ -84,7 +102,7 @@ class BlockAnalyzer:
     def suggest_split(self, issue_id: str) -> Dict:
         """Suggest how to split a complex issue."""
 
-        print(f"Analyzing complexity of {issue_id} for splitting...\n")
+        self.logger.info(f"Analyzing complexity of {issue_id} for splitting...\n")
 
         # Example analysis (would analyze actual issue content)
         analysis = {
@@ -122,23 +140,23 @@ class BlockAnalyzer:
             ]
         }
 
-        print(f"Complexity: {analysis['complexity'].upper()}")
-        print(f"Estimated total time: {analysis['estimated_hours']} hours")
-        print(f"Recommended split: {'YES' if analysis['recommended_split'] else 'NO'}")
-        print(f"Suggested strategy: {analysis['suggested_strategy']}\n")
+        self.logger.info(f"Complexity: {analysis['complexity'].upper()}")
+        self.logger.info(f"Estimated total time: {analysis['estimated_hours']} hours")
+        self.logger.info(f"Recommended split: {'YES' if analysis['recommended_split'] else 'NO'}")
+        self.logger.info(f"Suggested strategy: {analysis['suggested_strategy']}\n")
 
         if analysis['recommended_split']:
-            print(f"Suggested breakdown into {len(analysis['suggested_subtasks'])} subtasks:\n")
+            self.logger.info(f"Suggested breakdown into {len(analysis['suggested_subtasks'])} subtasks:\n")
             for i, subtask in enumerate(analysis['suggested_subtasks'], 1):
-                print(f"{i}. {subtask['title']} ({subtask['estimate']}h)")
-                print(f"   {subtask['description']}\n")
+                self.logger.info(f"{i}. {subtask['title']} ({subtask['estimate']}h)")
+                self.logger.info(f"   {subtask['description']}\n")
 
         return analysis
 
     def check_critical_path(self, project: str = None) -> List[str]:
         """Identify critical path items."""
 
-        print(f"Analyzing critical path{f' for {project}' if project else ''}...\n")
+        self.logger.info(f"Analyzing critical path{f' for {project}' if project else ''}...\n")
 
         # Example critical path (would use actual dependency graph)
         critical_path = [
@@ -149,23 +167,23 @@ class BlockAnalyzer:
             "ISSUE-109: Production deployment (2h)"
         ]
 
-        print("🎯 Critical path (items that block other work):\n")
+        self.logger.info(f"{ICONS['critical_path']} Critical path (items that block other work):\n")
         total_time = 0
         for item in critical_path:
-            print(f"  → {item}")
+            self.logger.info(f"  → {item}")
             # Extract hours from string (simple parse)
             hours = int(item.split('(')[1].split('h')[0])
             total_time += hours
 
-        print(f"\nEstimated critical path duration: {total_time} hours")
-        print(f"Items that can be parallelized are not shown above.")
+        self.logger.info(f"\nEstimated critical path duration: {total_time} hours")
+        self.logger.info(f"Items that can be parallelized are not shown above.")
 
         return critical_path
 
     def auto_escalate(self, threshold_days: int = 3) -> List[Dict]:
         """Find and escalate long-blocked issues."""
 
-        print(f"Finding issues blocked for >{threshold_days} days...\n")
+        self.logger.info(f"Finding issues blocked for >{threshold_days} days...\n")
 
         # Example: find stale blocked issues (would use actual API)
         threshold_date = datetime.now() - timedelta(days=threshold_days)
@@ -185,17 +203,17 @@ class BlockAnalyzer:
         ]
 
         if not stale_blocked:
-            print("✓ No issues blocked longer than threshold")
+            self.logger.success("No issues blocked longer than threshold")
             return []
 
-        print(f"⚠️  Found {len(stale_blocked)} issue(s) to escalate:\n")
+        self.logger.warning(f"Found {len(stale_blocked)} issue(s) to escalate:\n")
         for issue in stale_blocked:
             blocked_since = datetime.fromisoformat(issue['blocked_since'])
             days = (datetime.now() - blocked_since).days
-            print(f"  {issue['issue_id']}: blocked {days} days")
-            print(f"    Blocker: {issue['blocker']}")
-            print(f"    Impact: {issue['impact'].upper()}")
-            print(f"    Action: Escalating to managers\n")
+            self.logger.info(f"  {issue['issue_id']}: blocked {days} days")
+            self.logger.info(f"    Blocker: {issue['blocker']}")
+            self.logger.info(f"    Impact: {issue['impact'].upper()}")
+            self.logger.info(f"    Action: Escalating to managers\n")
 
         return stale_blocked
 
@@ -234,17 +252,19 @@ class BlockAnalyzer:
         """Pretty print blocker information."""
         days_blocked = (datetime.now() - blocker.blocked_since).days
 
-        print(f"  🚫 {blocker.blocker_id}: {blocker.description}")
-        print(f"     Category: {blocker.category}")
-        print(f"     Impact: {blocker.impact.upper()}")
-        print(f"     Blocked for: {days_blocked} days")
+        self.logger.info(f"  {ICONS['blocked']} {blocker.blocker_id}: {blocker.description}")
+        self.logger.info(f"     Category: {blocker.category}")
+        self.logger.info(f"     Impact: {blocker.impact.upper()}")
+        self.logger.info(f"     Blocked for: {days_blocked} days")
         if blocker.eta:
-            print(f"     ETA: {blocker.eta}")
-        print()
+            self.logger.info(f"     ETA: {blocker.eta}")
+        self.logger.info("")
 
 
 def main():
     """Main entry point."""
+    logger = Logger()
+
     parser = argparse.ArgumentParser(description="Analyze blocking issues")
     parser.add_argument("--issue", help="Issue ID to analyze")
     parser.add_argument("--suggest-split", action="store_true", help="Suggest how to split issue")
@@ -255,7 +275,7 @@ def main():
 
     args = parser.parse_args()
 
-    analyzer = BlockAnalyzer()
+    analyzer = BlockAnalyzer(logger=logger)
 
     if args.auto_escalate:
         # Parse threshold (simple version)
@@ -275,8 +295,8 @@ def main():
             analyzer.analyze_issue(args.issue)
 
     else:
-        print("Error: Specify --issue, --critical-path, or --auto-escalate")
-        print("Run with --help for usage information")
+        logger.error("Specify --issue, --critical-path, or --auto-escalate")
+        logger.info("Run with --help for usage information")
         sys.exit(1)
 
 

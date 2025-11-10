@@ -4,6 +4,8 @@ Issue Operations Script
 
 Manage GitHub and Linear issues - report blocks, split issues, bulk updates, and create related issues.
 
+Refactored to use professional logging and centralized constants.
+
 Usage:
     python issue_operations.py <operation> [options]
 
@@ -27,58 +29,38 @@ import sys
 import os
 import json
 import argparse
+from pathlib import Path
 from typing import List, Dict, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import asdict
 from datetime import datetime
-from enum import Enum
 
+# Add shared directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'shared'))
+from logger import Logger
 
-class Platform(Enum):
-    LINEAR = "linear"
-    GITHUB = "github"
-    JIRA = "jira"
-
-
-class IssueRelationship(Enum):
-    BLOCKS = "blocks"
-    BLOCKED_BY = "blocked-by"
-    RELATES_TO = "relates-to"
-    DUPLICATE = "duplicate"
-    SUBTASK = "subtask"
-    FOLLOW_UP = "follow-up"
-    PREREQUISITE = "prerequisite"
-
-
-@dataclass
-class Blocker:
-    """Represents a blocking issue."""
-    description: str
-    category: str  # external, technical, resource
-    impact: str  # high, medium, low
-    context: str
-    blocking_issue_id: Optional[str] = None
-    eta: Optional[str] = None
-    reported_at: str = None
-
-    def __post_init__(self):
-        if self.reported_at is None:
-            self.reported_at = datetime.now().isoformat()
-
-
-@dataclass
-class IssueOperation:
-    """Base class for issue operations."""
-    issue_id: str
-    platform: Platform
-    dry_run: bool = False
+# Import constants
+from constants import (
+    Platform,
+    IssueRelationship,
+    Blocker,
+    HUMAN_KEYWORDS,
+    AGENT_KEYWORDS,
+    DRY_RUN_PREFIX,
+    ICONS,
+    ERROR_MESSAGES,
+    DEFAULT_QUERY_LIMIT,
+    DEFAULT_SORT_ORDER
+)
 
 
 class IssueManager:
     """Manage issue operations across platforms."""
 
-    def __init__(self, platform: Platform, dry_run: bool = False):
+    def __init__(self, platform: Platform, dry_run: bool = False, logger: Logger = None):
+        """Initialize issue manager with platform and dry-run mode."""
         self.platform = platform
         self.dry_run = dry_run
+        self.logger = logger or Logger()
 
     def assign_issue(
         self,
@@ -90,15 +72,15 @@ class IssueManager:
         """Assign issue to agent or human."""
 
         if self.dry_run:
-            print(f"[DRY RUN] Would assign {issue_id}")
-            print(f"  Assignee: {assignee} (type: {assignee_type})")
-            print(f"  Notify: {notify}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would assign {issue_id}")
+            self.logger.info(f"  Assignee: {assignee} (type: {assignee_type})")
+            self.logger.info(f"  Notify: {notify}")
             return {"assignee": assignee, "type": assignee_type}
 
-        icon = "🤖" if assignee_type == "agent" else "👤"
-        print(f"✓ Assigned {issue_id} to {icon} {assignee}")
+        icon = ICONS["agent"] if assignee_type == "agent" else ICONS["human"]
+        self.logger.success(f"Assigned {issue_id} to {icon} {assignee}")
         if notify:
-            print(f"  Notified {assignee}")
+            self.logger.info(f"  Notified {assignee}")
 
         return {"issue": issue_id, "assignee": assignee, "type": assignee_type}
 
@@ -121,34 +103,29 @@ class IssueManager:
         description = "Sample issue description"
         labels = ["development"]
 
-        # Detect assignee type (using same logic as task decomposer)
-        human_keywords = [
-            "approve", "decision", "review stakeholder", "negotiate",
-            "business decision", "prioritize", "strategic"
-        ]
-
+        # Detect assignee type (using keywords from constants)
         title_lower = title.lower()
         desc_lower = description.lower()
 
-        is_human_task = any(kw in title_lower or kw in desc_lower for kw in human_keywords)
+        is_human_task = any(kw in title_lower or kw in desc_lower for kw in HUMAN_KEYWORDS)
 
         if is_human_task:
             assignee = human_users.get("default", "unassigned")
             assignee_type = "human"
-            icon = "👤"
+            icon = ICONS["human"]
         else:
             assignee = agent_user
             assignee_type = "agent"
-            icon = "🤖"
+            icon = ICONS["agent"]
 
         if self.dry_run:
-            print(f"[DRY RUN] Would auto-assign {issue_id}")
-            print(f"  Analysis: {'Human' if is_human_task else 'Agent'} task detected")
-            print(f"  Assignee: {icon} {assignee}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would auto-assign {issue_id}")
+            self.logger.info(f"  Analysis: {'Human' if is_human_task else 'Agent'} task detected")
+            self.logger.info(f"  Assignee: {icon} {assignee}")
             return {"assignee": assignee, "type": assignee_type}
 
-        print(f"✓ Auto-assigned {issue_id} to {icon} {assignee}")
-        print(f"  Detection: {'Human judgment required' if is_human_task else 'Agent can automate'}")
+        self.logger.success(f"Auto-assigned {issue_id} to {icon} {assignee}")
+        self.logger.info(f"  Detection: {'Human judgment required' if is_human_task else 'Agent can automate'}")
 
         return {
             "issue": issue_id,
@@ -168,20 +145,20 @@ class IssueManager:
         """Reassign issue from one assignee to another."""
 
         if self.dry_run:
-            print(f"[DRY RUN] Would reassign {issue_id}")
-            print(f"  From: {from_assignee}")
-            print(f"  To: {to_assignee}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would reassign {issue_id}")
+            self.logger.info(f"  From: {from_assignee}")
+            self.logger.info(f"  To: {to_assignee}")
             if reason:
-                print(f"  Reason: {reason}")
-            print(f"  Notify both: {notify_both}")
+                self.logger.info(f"  Reason: {reason}")
+            self.logger.info(f"  Notify both: {notify_both}")
             return {"from": from_assignee, "to": to_assignee}
 
-        print(f"✓ Reassigned {issue_id}")
-        print(f"  {from_assignee} → {to_assignee}")
+        self.logger.success(f"Reassigned {issue_id}")
+        self.logger.info(f"  {from_assignee} → {to_assignee}")
         if reason:
-            print(f"  Reason: {reason}")
+            self.logger.info(f"  Reason: {reason}")
         if notify_both:
-            print(f"  Notified both assignees")
+            self.logger.info(f"  Notified both assignees")
 
         return {
             "issue": issue_id,
@@ -211,24 +188,24 @@ class IssueManager:
         )
 
         if self.dry_run:
-            print(f"[DRY RUN] Would report blocker on {issue_id}")
-            print(f"  Blocker: {blocked_by}")
-            print(f"  Category: {category}")
-            print(f"  Impact: {impact}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would report blocker on {issue_id}")
+            self.logger.info(f"  Blocker: {blocked_by}")
+            self.logger.info(f"  Category: {category}")
+            self.logger.info(f"  Impact: {impact}")
             if blocking_issue_id:
-                print(f"  Blocked by issue: {blocking_issue_id}")
+                self.logger.info(f"  Blocked by issue: {blocking_issue_id}")
             if notify:
-                print(f"  Would notify: {', '.join(notify)}")
+                self.logger.info(f"  Would notify: {', '.join(notify)}")
             return asdict(blocker)
 
         # Actual implementation would call platform API
-        print(f"✓ Reported blocker on {issue_id}")
-        print(f"  Added 'blocked' label")
-        print(f"  Added blocker comment with context")
+        self.logger.success(f"Reported blocker on {issue_id}")
+        self.logger.info(f"  Added 'blocked' label")
+        self.logger.info(f"  Added blocker comment with context")
         if blocking_issue_id:
-            print(f"  Linked to blocking issue: {blocking_issue_id}")
+            self.logger.info(f"  Linked to blocking issue: {blocking_issue_id}")
         if notify:
-            print(f"  Notified: {', '.join(notify)}")
+            self.logger.info(f"  Notified: {', '.join(notify)}")
 
         return asdict(blocker)
 
@@ -241,16 +218,16 @@ class IssueManager:
         """Mark issue as unblocked."""
 
         if self.dry_run:
-            print(f"[DRY RUN] Would unblock {issue_id}")
-            print(f"  Resolution: {resolution}")
-            print(f"  Notify assignee: {notify_assignee}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would unblock {issue_id}")
+            self.logger.info(f"  Resolution: {resolution}")
+            self.logger.info(f"  Notify assignee: {notify_assignee}")
             return {"status": "would_unblock"}
 
-        print(f"✓ Unblocked {issue_id}")
-        print(f"  Removed 'blocked' label")
-        print(f"  Added resolution comment: {resolution}")
+        self.logger.success(f"Unblocked {issue_id}")
+        self.logger.info(f"  Removed 'blocked' label")
+        self.logger.info(f"  Added resolution comment: {resolution}")
         if notify_assignee:
-            print(f"  Notified assignee to resume work")
+            self.logger.info(f"  Notified assignee to resume work")
 
         return {"status": "unblocked", "resolution": resolution}
 
@@ -265,11 +242,11 @@ class IssueManager:
         """Split large issue into smaller subtasks."""
 
         if self.dry_run:
-            print(f"[DRY RUN] Would split {issue_id}")
-            print(f"  Strategy: {strategy}")
-            print(f"  Number of subtasks: {num_subtasks or 'auto'}")
-            print(f"  Preserve labels: {preserve_labels}")
-            print(f"  Link to parent: {link_parent}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would split {issue_id}")
+            self.logger.info(f"  Strategy: {strategy}")
+            self.logger.info(f"  Number of subtasks: {num_subtasks or 'auto'}")
+            self.logger.info(f"  Preserve labels: {preserve_labels}")
+            self.logger.info(f"  Link to parent: {link_parent}")
             return []
 
         # Example split (actual implementation would analyze issue content)
@@ -282,11 +259,11 @@ class IssueManager:
                 "labels": ["inherited"] if preserve_labels else []
             }
             subtasks.append(subtask)
-            print(f"✓ Created {subtask['id']}: {subtask['title']}")
+            self.logger.success(f"Created {subtask['id']}: {subtask['title']}")
 
-        print(f"\n✓ Split {issue_id} into {len(subtasks)} subtasks")
+        self.logger.success(f"\nSplit {issue_id} into {len(subtasks)} subtasks")
         if link_parent:
-            print(f"  All subtasks linked to parent {issue_id}")
+            self.logger.info(f"  All subtasks linked to parent {issue_id}")
 
         return subtasks
 
@@ -299,17 +276,17 @@ class IssueManager:
         """Merge duplicate or related issues."""
 
         if self.dry_run:
-            print(f"[DRY RUN] Would merge issues")
-            print(f"  Issues: {', '.join(issue_ids)}")
-            print(f"  Keep: {keep}")
-            print(f"  Preserve comments: {preserve_comments}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would merge issues")
+            self.logger.info(f"  Issues: {', '.join(issue_ids)}")
+            self.logger.info(f"  Keep: {keep}")
+            self.logger.info(f"  Preserve comments: {preserve_comments}")
             return {"status": "would_merge"}
 
         closed = [id for id in issue_ids if id != keep]
-        print(f"✓ Merged issues into {keep}")
-        print(f"  Closed as duplicate: {', '.join(closed)}")
+        self.logger.success(f"Merged issues into {keep}")
+        self.logger.info(f"  Closed as duplicate: {', '.join(closed)}")
         if preserve_comments:
-            print(f"  Merged comments to {keep}")
+            self.logger.info(f"  Merged comments to {keep}")
 
         return {"primary": keep, "merged": closed}
 
@@ -328,20 +305,20 @@ class IssueManager:
         matching_issues = [f"ISSUE-{i}" for i in range(1, 6)]
 
         if self.dry_run:
-            print(f"[DRY RUN] Would update {len(matching_issues)} issues")
-            print(f"  Filter: {filter_query}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would update {len(matching_issues)} issues")
+            self.logger.info(f"  Filter: {filter_query}")
             if add_labels:
-                print(f"  Add labels: {', '.join(add_labels)}")
+                self.logger.info(f"  Add labels: {', '.join(add_labels)}")
             if remove_labels:
-                print(f"  Remove labels: {', '.join(remove_labels)}")
+                self.logger.info(f"  Remove labels: {', '.join(remove_labels)}")
             if set_assignee:
-                print(f"  Set assignee: {set_assignee}")
+                self.logger.info(f"  Set assignee: {set_assignee}")
             if set_priority:
-                print(f"  Set priority: {set_priority}")
-            print(f"\n  Matching issues: {', '.join(matching_issues)}")
+                self.logger.info(f"  Set priority: {set_priority}")
+            self.logger.info(f"\n  Matching issues: {', '.join(matching_issues)}")
             return {"count": len(matching_issues), "issues": matching_issues}
 
-        print(f"✓ Updated {len(matching_issues)} issues")
+        self.logger.success(f"Updated {len(matching_issues)} issues")
         for issue in matching_issues:
             changes = []
             if add_labels:
@@ -352,7 +329,7 @@ class IssueManager:
                 changes.append(f"assigned to {set_assignee}")
             if set_priority:
                 changes.append(f"priority → {set_priority}")
-            print(f"  {issue}: {'; '.join(changes)}")
+            self.logger.info(f"  {issue}: {'; '.join(changes)}")
 
         return {"count": len(matching_issues), "updated": matching_issues}
 
@@ -369,17 +346,17 @@ class IssueManager:
         new_issue_id = f"NEW-{hash(title) % 1000}"
 
         if self.dry_run:
-            print(f"[DRY RUN] Would create related issue")
-            print(f"  Source: {source_issue}")
-            print(f"  Relationship: {relationship.value}")
-            print(f"  Title: {title}")
-            print(f"  Inherit labels: {inherit_labels}")
+            self.logger.info(f"{DRY_RUN_PREFIX} Would create related issue")
+            self.logger.info(f"  Source: {source_issue}")
+            self.logger.info(f"  Relationship: {relationship.value}")
+            self.logger.info(f"  Title: {title}")
+            self.logger.info(f"  Inherit labels: {inherit_labels}")
             return {"id": new_issue_id}
 
-        print(f"✓ Created {new_issue_id}: {title}")
-        print(f"  Relationship: {relationship.value} {source_issue}")
+        self.logger.success(f"Created {new_issue_id}: {title}")
+        self.logger.info(f"  Relationship: {relationship.value} {source_issue}")
         if inherit_labels:
-            print(f"  Inherited labels from {source_issue}")
+            self.logger.info(f"  Inherited labels from {source_issue}")
 
         return {
             "id": new_issue_id,
@@ -402,18 +379,20 @@ class IssueManager:
             for i in range(1, min(6, limit + 1))
         ]
 
-        print(f"✓ Found {len(results)} issues")
-        print(f"  Filter: {filter_query}")
-        print(f"  Sort: {sort_by}")
-        print(f"\nResults:")
+        self.logger.success(f"Found {len(results)} issues")
+        self.logger.info(f"  Filter: {filter_query}")
+        self.logger.info(f"  Sort: {sort_by}")
+        self.logger.info(f"\nResults:")
         for issue in results:
-            print(f"  {issue['id']}: {issue['title']} ({issue['status']})")
+            self.logger.info(f"  {issue['id']}: {issue['title']} ({issue['status']})")
 
         return results
 
 
 def main():
     """Main entry point."""
+    logger = Logger()
+
     parser = argparse.ArgumentParser(description="Manage GitHub and Linear issues with intelligent agent/human assignment")
     parser.add_argument("operation", choices=[
         "report-blocker", "unblock", "split-issue", "merge-issues",
@@ -459,13 +438,13 @@ def main():
     args = parser.parse_args()
 
     platform = Platform(args.platform)
-    manager = IssueManager(platform, args.dry_run)
+    manager = IssueManager(platform, args.dry_run, logger=logger)
 
     result = None
 
     if args.operation == "report-blocker":
         if not args.issue or not args.blocked_by:
-            print("Error: --issue and --blocked-by required")
+            logger.error(ERROR_MESSAGES["missing_blocker"])
             sys.exit(1)
 
         notify = args.notify.split(',') if args.notify else None
@@ -481,14 +460,14 @@ def main():
 
     elif args.operation == "unblock":
         if not args.issue or not args.resolution:
-            print("Error: --issue and --resolution required")
+            logger.error(ERROR_MESSAGES["missing_resolution"])
             sys.exit(1)
 
         result = manager.unblock_issue(args.issue, args.resolution)
 
     elif args.operation == "split-issue":
         if not args.issue:
-            print("Error: --issue required")
+            logger.error(ERROR_MESSAGES["missing_issue"])
             sys.exit(1)
 
         result = manager.split_issue(
@@ -501,7 +480,7 @@ def main():
 
     elif args.operation == "merge-issues":
         if not args.issues or not args.keep:
-            print("Error: --issues and --keep required")
+            logger.error(ERROR_MESSAGES["missing_merge"])
             sys.exit(1)
 
         issue_list = args.issues.split(',')
@@ -509,7 +488,7 @@ def main():
 
     elif args.operation == "bulk-update":
         if not args.filter:
-            print("Error: --filter required")
+            logger.error(ERROR_MESSAGES["missing_filter"])
             sys.exit(1)
 
         result = manager.bulk_update(
@@ -523,7 +502,7 @@ def main():
 
     elif args.operation == "create-related":
         if not args.source or not args.type or not args.title:
-            print("Error: --source, --type, and --title required")
+            logger.error(ERROR_MESSAGES["missing_source"])
             sys.exit(1)
 
         relationship_map = {
@@ -543,14 +522,14 @@ def main():
 
     elif args.operation == "query":
         if not args.filter:
-            print("Error: --filter required")
+            logger.error(ERROR_MESSAGES["missing_filter"])
             sys.exit(1)
 
         result = manager.query_issues(args.filter)
 
     elif args.operation == "assign":
         if not args.issue or not args.assignee:
-            print("Error: --issue and --assignee required")
+            logger.error(ERROR_MESSAGES["missing_assignee"])
             sys.exit(1)
 
         result = manager.assign_issue(
@@ -561,7 +540,7 @@ def main():
 
     elif args.operation == "auto-assign":
         if not args.issue:
-            print("Error: --issue required")
+            logger.error(ERROR_MESSAGES["missing_issue"])
             sys.exit(1)
 
         # Parse human users mapping
@@ -580,7 +559,7 @@ def main():
 
     elif args.operation == "reassign":
         if not args.issue or not args.from_assignee or not args.to_assignee:
-            print("Error: --issue, --from-assignee, and --to-assignee required")
+            logger.error(ERROR_MESSAGES["missing_reassign"])
             sys.exit(1)
 
         result = manager.reassign_issue(
@@ -594,7 +573,7 @@ def main():
     if args.output and result:
         with open(args.output, 'w') as f:
             json.dump(result, f, indent=2)
-        print(f"\n✓ Results saved to {args.output}")
+        logger.success(f"\nResults saved to {args.output}")
 
 
 if __name__ == "__main__":
