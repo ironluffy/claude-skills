@@ -19,28 +19,49 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+# Add shared utilities to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared"))
+
+from logger import Logger
+from constants import (
+    SKILL_NAME_PATTERN,
+    FILE_REFERENCE_PATTERNS,
+    THIRD_PERSON_PATTERNS,
+    REQUIRED_FIELDS,
+    MIN_DESCRIPTION_LENGTH,
+    MAX_DESCRIPTION_LENGTH,
+    MIN_MARKDOWN_CONTENT_LENGTH,
+    MAX_STYLE_WARNINGS,
+    ERROR_MESSAGES,
+    WARNING_MESSAGES,
+    SUCCESS_MESSAGES,
+    USAGE_MESSAGES,
+    ICONS,
+)
+
 
 class SkillValidator:
     """Validate skill structure and contents."""
 
-    def __init__(self, skill_path: Path):
+    def __init__(self, skill_path: Path, logger: Logger = None):
         self.skill_path = Path(skill_path).resolve()
+        self.logger = logger or Logger()
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.skill_data: Dict = {}
 
     def validate(self) -> bool:
         """Run all validation checks."""
-        print(f"Validating skill: {self.skill_path.name}")
-        print(f"Location: {self.skill_path}\n")
+        self.logger.info(f"Validating skill: {self.skill_path.name}")
+        self.logger.info(f"Location: {self.skill_path}\n")
 
         # Check if directory exists
         if not self.skill_path.exists():
-            self.errors.append(f"Directory does not exist: {self.skill_path}")
+            self.errors.append(ERROR_MESSAGES["directory_not_found"].format(path=self.skill_path))
             return False
 
         if not self.skill_path.is_dir():
-            self.errors.append(f"Path is not a directory: {self.skill_path}")
+            self.errors.append(ERROR_MESSAGES["not_a_directory"].format(path=self.skill_path))
             return False
 
         # Run validation checks
@@ -65,9 +86,9 @@ class SkillValidator:
         """Verify SKILL.md file exists."""
         skill_md = self.skill_path / "SKILL.md"
         if not skill_md.exists():
-            self.errors.append("SKILL.md file not found (required)")
+            self.errors.append(ERROR_MESSAGES["skill_md_not_found"])
         elif not skill_md.is_file():
-            self.errors.append("SKILL.md exists but is not a file")
+            self.errors.append(ERROR_MESSAGES["skill_md_not_file"])
 
     def _validate_yaml_frontmatter(self):
         """Validate YAML frontmatter structure and syntax."""
@@ -79,13 +100,13 @@ class SkillValidator:
 
         # Check for frontmatter delimiters
         if not content.startswith('---'):
-            self.errors.append("SKILL.md must start with YAML frontmatter (---)")
+            self.errors.append(ERROR_MESSAGES["no_frontmatter"])
             return
 
         # Extract frontmatter
         parts = content.split('---', 2)
         if len(parts) < 3:
-            self.errors.append("YAML frontmatter not properly closed with ---")
+            self.errors.append(ERROR_MESSAGES["frontmatter_not_closed"])
             return
 
         frontmatter = parts[1].strip()
@@ -94,68 +115,62 @@ class SkillValidator:
         try:
             self.skill_data = yaml.safe_load(frontmatter)
             if not isinstance(self.skill_data, dict):
-                self.errors.append("YAML frontmatter must be a dictionary")
+                self.errors.append(ERROR_MESSAGES["frontmatter_not_dict"])
                 return
         except yaml.YAMLError as e:
-            self.errors.append(f"Invalid YAML syntax: {e}")
+            self.errors.append(ERROR_MESSAGES["yaml_syntax_error"].format(error=e))
             return
 
-        print("✓ YAML frontmatter is valid")
+        self.logger.success(f"{ICONS['success']} {SUCCESS_MESSAGES['yaml_valid']}")
 
     def _validate_name_field(self):
         """Validate the name field."""
         if 'name' not in self.skill_data:
-            self.errors.append("Required field 'name' is missing from frontmatter")
+            self.errors.append(ERROR_MESSAGES["missing_field"].format(field="name"))
             return
 
         name = self.skill_data['name']
 
         # Check type
         if not isinstance(name, str):
-            self.errors.append("Field 'name' must be a string")
+            self.errors.append(ERROR_MESSAGES["field_not_string"].format(field="name"))
             return
 
         # Check format
-        if not re.match(r'^[a-z0-9-]+$', name):
-            self.errors.append(
-                "Field 'name' must contain only lowercase letters, numbers, and hyphens"
-            )
+        if not SKILL_NAME_PATTERN.match(name):
+            self.errors.append(ERROR_MESSAGES["invalid_name_format"])
 
         # Check hyphen usage
         if name.startswith('-') or name.endswith('-'):
-            self.errors.append("Field 'name' cannot start or end with a hyphen")
+            self.errors.append(ERROR_MESSAGES["name_hyphen_start_end"])
 
         if '--' in name:
-            self.errors.append("Field 'name' cannot contain consecutive hyphens")
+            self.errors.append(ERROR_MESSAGES["name_consecutive_hyphens"])
 
         if len(self.errors) == 0 or all('name' not in e for e in self.errors[-3:]):
-            print(f"✓ Name field is valid: '{name}'")
+            self.logger.success(f"{ICONS['success']} {SUCCESS_MESSAGES['name_valid'].format(name=name)}")
 
     def _validate_description_field(self):
         """Validate the description field."""
         if 'description' not in self.skill_data:
-            self.errors.append("Required field 'description' is missing from frontmatter")
+            self.errors.append(ERROR_MESSAGES["missing_field"].format(field="description"))
             return
 
         description = self.skill_data['description']
 
         # Check type
         if not isinstance(description, str):
-            self.errors.append("Field 'description' must be a string")
+            self.errors.append(ERROR_MESSAGES["field_not_string"].format(field="description"))
             return
 
         # Check length
-        if len(description.strip()) < 10:
-            self.warnings.append(
-                "Field 'description' is very short - consider adding more detail"
-            )
+        if len(description.strip()) < MIN_DESCRIPTION_LENGTH:
+            self.warnings.append(WARNING_MESSAGES["short_description"])
 
-        if len(description.strip()) > 200:
-            self.warnings.append(
-                "Field 'description' is quite long - consider being more concise"
-            )
+        if len(description.strip()) > MAX_DESCRIPTION_LENGTH:
+            self.warnings.append(WARNING_MESSAGES["long_description"])
 
-        print(f"✓ Description field is valid")
+        self.logger.success(f"{ICONS['success']} {SUCCESS_MESSAGES['description_valid']}")
 
     def _validate_directory_name_match(self):
         """Verify directory name matches the name field."""
@@ -167,10 +182,10 @@ class SkillValidator:
 
         if name != dir_name:
             self.errors.append(
-                f"Directory name '{dir_name}' does not match name field '{name}'"
+                ERROR_MESSAGES["name_mismatch"].format(dir_name=dir_name, name=name)
             )
         else:
-            print(f"✓ Directory name matches name field")
+            self.logger.success(f"{ICONS['success']} {SUCCESS_MESSAGES['name_match']}")
 
     def _check_markdown_content(self):
         """Check for markdown content after frontmatter."""
@@ -187,11 +202,13 @@ class SkillValidator:
         markdown_content = parts[2].strip()
 
         if not markdown_content:
-            self.warnings.append("SKILL.md has no content after frontmatter")
-        elif len(markdown_content) < 50:
-            self.warnings.append("SKILL.md content is very minimal")
+            self.warnings.append(WARNING_MESSAGES["no_content"])
+        elif len(markdown_content) < MIN_MARKDOWN_CONTENT_LENGTH:
+            self.warnings.append(WARNING_MESSAGES["minimal_content"])
         else:
-            print(f"✓ Markdown content present ({len(markdown_content)} characters)")
+            self.logger.success(
+                f"{ICONS['success']} {SUCCESS_MESSAGES['content_present'].format(length=len(markdown_content))}"
+            )
 
     def _check_file_references(self):
         """Check that referenced files exist."""
@@ -202,14 +219,8 @@ class SkillValidator:
         content = skill_md.read_text()
 
         # Find references to local files (relative paths in markdown)
-        # Pattern: references/, scripts/, templates/, examples/, etc.
-        patterns = [
-            r'`([a-z-]+/[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*)`',
-            r'\(((?:scripts|references|templates|examples|assets)/[^)]+)\)',
-        ]
-
         referenced_files = set()
-        for pattern in patterns:
+        for pattern in FILE_REFERENCE_PATTERNS:
             matches = re.findall(pattern, content)
             referenced_files.update(matches)
 
@@ -221,9 +232,11 @@ class SkillValidator:
 
         if missing_files:
             for missing in missing_files:
-                self.warnings.append(f"Referenced file not found: {missing}")
+                self.warnings.append(WARNING_MESSAGES["missing_reference"].format(file=missing))
         elif referenced_files:
-            print(f"✓ All {len(referenced_files)} referenced files exist")
+            self.logger.success(
+                f"{ICONS['success']} {SUCCESS_MESSAGES['references_valid'].format(count=len(referenced_files))}"
+            )
 
     def _check_writing_style(self):
         """Check for imperative/infinitive form (basic heuristics)."""
@@ -242,62 +255,57 @@ class SkillValidator:
         # Look for common patterns that violate imperative form
         violations = []
 
-        # Pattern: "This skill does..." or "Creates a..."
-        third_person_patterns = [
-            r'^\s*-\s+[A-Z][a-z]+s\s+',  # "- Creates", "- Analyzes"
-            r'^\s*\d+\.\s+[A-Z][a-z]+s\s+',  # "1. Creates", "2. Analyzes"
-        ]
-
         lines = markdown_content.split('\n')
         for i, line in enumerate(lines, 1):
-            for pattern in third_person_patterns:
+            for pattern in THIRD_PERSON_PATTERNS:
                 if re.search(pattern, line):
-                    violations.append(f"Line {i}: Consider using imperative form")
+                    violations.append(WARNING_MESSAGES["style_violation"].format(line=i))
 
         if violations:
             # Only show first few violations
-            for violation in violations[:3]:
+            for violation in violations[:MAX_STYLE_WARNINGS]:
                 self.warnings.append(violation)
-            if len(violations) > 3:
-                self.warnings.append(f"... and {len(violations) - 3} more style warnings")
+            if len(violations) > MAX_STYLE_WARNINGS:
+                self.warnings.append(
+                    WARNING_MESSAGES["more_style_warnings"].format(count=len(violations) - MAX_STYLE_WARNINGS)
+                )
         else:
-            print("✓ Writing style looks good (imperative form)")
+            self.logger.success(f"{ICONS['success']} {SUCCESS_MESSAGES['style_good']}")
 
     def _print_results(self):
         """Print validation results."""
-        print("\n" + "="*60)
+        self.logger.info("\n" + "="*60)
 
         if self.errors:
-            print(f"\n❌ VALIDATION FAILED ({len(self.errors)} errors)\n")
+            self.logger.error(f"\n{ICONS['error']} VALIDATION FAILED ({len(self.errors)} errors)\n")
             for error in self.errors:
-                print(f"  ✗ {error}")
+                self.logger.error(f"  {ICONS['cross']} {error}")
 
         if self.warnings:
-            print(f"\n⚠️  WARNINGS ({len(self.warnings)})\n")
+            self.logger.warning(f"\n{ICONS['warning']}  WARNINGS ({len(self.warnings)})\n")
             for warning in self.warnings:
-                print(f"  ! {warning}")
+                self.logger.warning(f"  {ICONS['info']} {warning}")
 
         if not self.errors and not self.warnings:
-            print("\n✅ VALIDATION PASSED")
-            print("\nSkill is ready for use!")
+            self.logger.success(f"\n{ICONS['check']} {SUCCESS_MESSAGES['validation_passed']}")
+            self.logger.info(f"\n{SUCCESS_MESSAGES['skill_ready']}")
         elif not self.errors:
-            print("\n✅ VALIDATION PASSED (with warnings)")
-            print("\nSkill is functional but consider addressing warnings.")
+            self.logger.success(f"\n{ICONS['check']} {SUCCESS_MESSAGES['validation_passed_warnings']}")
+            self.logger.info(f"\n{SUCCESS_MESSAGES['skill_functional']}")
 
-        print("="*60)
+        self.logger.info("="*60)
 
 
 def main():
     """Main entry point."""
+    logger = Logger()
+
     if len(sys.argv) < 2:
-        print("Usage: python package_skill.py <skill-directory>")
-        print("\nExample:")
-        print("  python package_skill.py ../task-decomposer")
-        print("  python package_skill.py /path/to/my-skill")
+        logger.info(USAGE_MESSAGES["package_skill"])
         sys.exit(1)
 
     skill_path = sys.argv[1]
-    validator = SkillValidator(skill_path)
+    validator = SkillValidator(skill_path, logger=logger)
 
     success = validator.validate()
     sys.exit(0 if success else 1)
